@@ -29,4 +29,4 @@ Spec-driven + test-driven, via the `roadtrip-dev` agent workflow in
   `version.txt`, `versionCode` is derived from it).
 - One APK serves phone and tablet — layouts adapt via `WindowSizeClass`.
 - Location tracking runs **only** when the signed-in profile is a parent on a phone.
-- Requirement areas: AND (app-wide), ANDSYNC, ANDLOC, ANDMAP, ANDJRNL, ANDGAME, ANDNOTIF, ANDSET.
+- Requirement areas: AND (app-wide), ANDSYNC, ANDLOC, ANDMAP, ANDJRNL, ANDGAME, ANDNOTIF, ANDSET, ANDTRIP (planned).

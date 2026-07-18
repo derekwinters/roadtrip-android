@@ -9,11 +9,11 @@ cd "$(dirname "$0")/.."
 fail=0
 
 # Collect requirement rows: | AND-001 | ... | auto |
-mapfile -t rows < <(grep -hoE '^\|\s*[A-Z]+-[0-9]{3}\s*\|.*\|\s*(auto|manual)\s*\|\s*$' docs/spec/*.md || true)
+mapfile -t rows < <(grep -hoE '^\|\s*[A-Z]+-[0-9]{3}\s*\|.*\|\s*(auto|manual|planned)\s*\|\s*$' docs/spec/*.md || true)
 declare -A seen verify
 for row in "${rows[@]}"; do
   id=$(echo "$row" | grep -oE '[A-Z]+-[0-9]{3}' | head -1)
-  v=$(echo "$row" | grep -oE '(auto|manual)\s*\|\s*$' | grep -oE 'auto|manual')
+  v=$(echo "$row" | grep -oE '(auto|manual|planned)\s*\|\s*$' | grep -oE 'auto|manual|planned')
   if [[ -n "${seen[$id]:-}" ]]; then
     echo "✗ Duplicate requirement ID: $id"; fail=1
   fi

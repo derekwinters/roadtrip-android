@@ -51,3 +51,4 @@ One APK serves everything:
 | `06-notifications.md` | Local notifications on phones and tablets (ANDNOTIF) |
 | `07-settings.md` | Parent settings (radii), checklist & summaries screens (ANDSET) |
 | `08-testing.md` | Test strategy, CI, release engineering |
+| `09-trips.md` | Multiple road trips: parent-only start/end, per-trip history (planned) |
