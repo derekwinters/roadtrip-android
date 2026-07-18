@@ -27,11 +27,15 @@ import com.roadtrip.app.ui.common.SectionHeader
 import com.roadtrip.app.ui.common.formatFeedTime
 import com.roadtrip.core.api.Checklist
 import com.roadtrip.core.api.JournalPage
+import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.Trip
 import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.api.TripSummary
 import com.roadtrip.core.common.Timestamps
+import com.roadtrip.core.trips.PlannerState
 import com.roadtrip.core.trips.TripHistoryBrowser
+import com.roadtrip.core.trips.TripPlannerReducer
+import com.roadtrip.core.trips.lifecycleInstant
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,24 +49,37 @@ private data class TripDetail(
 
 /**
  * Trip history browser (ANDTRIP-003): lists trips (from the cached trips read model,
- * refreshed by the sync pass) and opens a read-only journal, checklist, and summary view
- * per trip via the core [TripHistoryBrowser]. Everything here is read-only — no composer,
- * no edits.
+ * refreshed by the sync pass) and opens a read-only journal, checklist, summary, and
+ * bingo view per trip via the core [TripHistoryBrowser]. Histories are read-only; the
+ * planned "next trip" renders as its card on top instead (create/rename/delete/start
+ * for parents, ANDTRIP-006).
  */
 @Composable
 fun TripsScreen(
     container: AppContainer,
+    profile: Profile,
     initialTripId: String?,
+    onOpenBingo: (String) -> Unit,
 ) {
     val tick by container.refreshTick.collectAsState()
     val online by container.onlineMonitor.online.collectAsState()
     var selectedTripId by remember { mutableStateOf(initialTripId) }
 
+    // Planned trips have no history — they live on the planner card (ANDTRIP-006).
     val trips: List<Trip> = remember(tick) {
-        container.tripsCache.read()?.value.orEmpty().sortedWith(
-            compareBy<Trip> { it.status != TripStatus.ACTIVE }
-                .thenByDescending { Timestamps.parse(it.endedAt ?: it.startedAt) },
-        )
+        container.tripsCache.read()?.value.orEmpty()
+            .filter { it.status != TripStatus.PLANNED }
+            .sortedWith(
+                compareBy<Trip> { it.status != TripStatus.ACTIVE }
+                    .thenByDescending { it.lifecycleInstant() },
+            )
+    }
+    val plannerState: PlannerState = remember(tick, online, profile) {
+        val allTrips = container.tripsCache.read()?.value.orEmpty()
+        val staged = TripPlannerReducer.plannedTrip(allTrips)
+            ?.let { container.stagedDestinationsCache(it.id).read()?.value }
+            .orEmpty()
+        TripPlannerReducer.reduce(allTrips, staged, profile.role, online)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -70,29 +87,72 @@ fun TripsScreen(
 
         val selected = trips.firstOrNull { it.id == selectedTripId }
         if (selected == null) {
-            TripList(trips, onOpen = { selectedTripId = it.id })
+            TripList(
+                container = container,
+                trips = trips,
+                plannerState = plannerState,
+                onOpen = { selectedTripId = it.id },
+            )
         } else {
             TripDetailView(
                 container = container,
                 trip = selected,
                 online = online,
                 onBack = { selectedTripId = null },
+                onOpenBingo = onOpenBingo,
             )
         }
     }
 }
 
 @Composable
-private fun TripList(trips: List<Trip>, onOpen: (Trip) -> Unit) {
-    if (trips.isEmpty()) {
-        Text(
-            "No road trips yet — this is where past trips will live.",
-            modifier = Modifier.padding(24.dp),
-        )
-        return
-    }
+private fun TripList(
+    container: AppContainer,
+    trips: List<Trip>,
+    plannerState: PlannerState,
+    onOpen: (Trip) -> Unit,
+) {
+    var showPlanDialog by remember { mutableStateOf(false) }
+    var showActivateDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    val tripError by container.tripActionError.collectAsState()
+
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        // The planned "next trip" card (ANDTRIP-006/007) — read-only for kids.
+        val plannedCard = plannerState.card
+        if (plannedCard != null || plannerState.planAction.visible) {
+            item { SectionHeader("Next trip") }
+        }
+        if (plannedCard != null) {
+            item {
+                PlannedTripCardView(
+                    card = plannedCard,
+                    tripError = tripError,
+                    onStart = { showActivateDialog = true },
+                    onEdit = { showPlanDialog = true },
+                    onDelete = { showDeleteDialog = true },
+                )
+            }
+        } else if (plannerState.planAction.visible) {
+            item {
+                TextButton(
+                    onClick = { showPlanDialog = true },
+                    enabled = plannerState.planAction.enabled,
+                ) {
+                    Text("Plan the next trip")
+                }
+            }
+        }
+
         item { SectionHeader("Road trips") }
+        if (trips.isEmpty()) {
+            item {
+                Text(
+                    "No road trips yet — this is where past trips will live.",
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
+        }
         items(trips, key = { it.id }) { trip ->
             Card(
                 onClick = { onOpen(trip) },
@@ -120,6 +180,47 @@ private fun TripList(trips: List<Trip>, onOpen: (Trip) -> Unit) {
             }
         }
     }
+
+    if (showPlanDialog) {
+        val editingTrip = plannerState.card?.trip
+        PlanTripDialog(
+            initialName = editingTrip?.name.orEmpty(),
+            initialStart = editingTrip?.plannedStartAt.orEmpty(),
+            editing = editingTrip != null,
+            onConfirm = { name, plannedStartAt ->
+                showPlanDialog = false
+                if (editingTrip == null) {
+                    container.createPlannedTrip(name, plannedStartAt)
+                } else {
+                    container.updatePlannedTrip(editingTrip.id, name, plannedStartAt)
+                }
+            },
+            onDismiss = { showPlanDialog = false },
+        )
+    }
+    plannerState.card?.let { card ->
+        if (showActivateDialog) {
+            ActivatePlannedTripDialog(
+                tripName = card.trip.name,
+                stagedCount = card.itinerary.size,
+                onConfirm = {
+                    showActivateDialog = false
+                    container.activatePlannedTrip(card.trip.id)
+                },
+                onDismiss = { showActivateDialog = false },
+            )
+        }
+        if (showDeleteDialog) {
+            DeletePlannedTripDialog(
+                tripName = card.trip.name,
+                onConfirm = {
+                    showDeleteDialog = false
+                    container.deletePlannedTrip(card.trip.id)
+                },
+                onDismiss = { showDeleteDialog = false },
+            )
+        }
+    }
 }
 
 @Composable
@@ -128,6 +229,7 @@ private fun TripDetailView(
     trip: Trip,
     online: Boolean,
     onBack: () -> Unit,
+    onOpenBingo: (String) -> Unit,
 ) {
     var detail by remember(trip.id) { mutableStateOf<TripDetail?>(null) }
     var error by remember(trip.id) { mutableStateOf<String?>(null) }
@@ -193,6 +295,13 @@ private fun TripDetailView(
                     }
                 }
 
+                // The trip's license-plate bingo card, read-only (ANDBNG-004).
+                item {
+                    TextButton(onClick = { onOpenBingo(trip.id) }) {
+                        Text("License plate bingo card")
+                    }
+                }
+
                 item { SectionHeader("States visited") }
                 if (loaded.checklist.states.isEmpty()) {
                     item { Text("No states recorded.", style = MaterialTheme.typography.bodyMedium) }
@@ -227,7 +336,8 @@ private fun TripDetailView(
 }
 
 private fun tripDates(trip: Trip): String {
-    val start = formatFeedTime(Timestamps.parse(trip.startedAt))
+    val start = trip.startedAt?.let { formatFeedTime(Timestamps.parse(it)) }
+        ?: return trip.plannedStartAt?.let { "planned $it" } ?: "planned"
     val end = trip.endedAt?.let { formatFeedTime(Timestamps.parse(it)) }
     return if (end != null) "$start — $end" else "since $start"
 }

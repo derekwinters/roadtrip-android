@@ -42,6 +42,7 @@ import androidx.navigation.navArgument
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.checklist.ChecklistScreen
 import com.roadtrip.app.ui.common.OnlineBadge
+import com.roadtrip.app.ui.games.BingoScreen
 import com.roadtrip.app.ui.games.BoardScreen
 import com.roadtrip.app.ui.games.GamesScreen
 import com.roadtrip.app.ui.games.ReplayScreen
@@ -49,13 +50,19 @@ import com.roadtrip.app.ui.journal.JournalScreen
 import com.roadtrip.app.ui.map.MapScreen
 import com.roadtrip.app.ui.settings.SettingsScreen
 import com.roadtrip.app.ui.trip.TripScreen
+import com.roadtrip.app.ui.trips.ActivatePlannedTripDialog
+import com.roadtrip.app.ui.trips.DeletePlannedTripDialog
+import com.roadtrip.app.ui.trips.PlanTripDialog
+import com.roadtrip.app.ui.trips.PlannedTripCardView
 import com.roadtrip.app.ui.trips.StartTripDialog
 import com.roadtrip.app.ui.trips.TripsScreen
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.journal.NavTarget
 import com.roadtrip.core.notifications.Screen
 import com.roadtrip.core.notifications.VisibleContext
+import com.roadtrip.core.trips.PlannerState
 import com.roadtrip.core.trips.TripHomeState
+import com.roadtrip.core.trips.TripPlannerReducer
 import com.roadtrip.core.trips.TripStateReducer
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -91,6 +98,20 @@ fun AppShell(
     }
     var showStartDialog by remember { mutableStateOf(false) }
 
+    // The planned "next trip" card state for the no-active-trip banner area
+    // (ANDTRIP-006/007); the staged itinerary previews from its own cache.
+    val plannerState: PlannerState = remember(tick, online, profile) {
+        val trips = container.tripsCache.read()?.value.orEmpty()
+        val staged = TripPlannerReducer.plannedTrip(trips)
+            ?.let { container.stagedDestinationsCache(it.id).read()?.value }
+            .orEmpty()
+        TripPlannerReducer.reduce(trips, staged, profile.role, online)
+    }
+    val tripError by container.tripActionError.collectAsState()
+    var showPlanDialog by remember { mutableStateOf(false) }
+    var showActivateDialog by remember { mutableStateOf(false) }
+    var showDeletePlanDialog by remember { mutableStateOf(false) }
+
     // Consume a notification tap's deep-link target (ANDNOTIF-005).
     val pending by pendingNavTarget.collectAsState()
     LaunchedEffect(pending) {
@@ -111,6 +132,8 @@ fun AppShell(
                 backStackEntry?.arguments?.getString("gameId"),
             )
             currentRoute.startsWith("replay/") -> VisibleContext(Screen.GAMES)
+            // Bingo lives in the Games section (docs/spec/10-bingo.md).
+            currentRoute.startsWith("bingo") -> VisibleContext(Screen.GAMES)
             currentRoute.startsWith("checklist") -> VisibleContext(Screen.CHECKLIST)
             // "trips" must be tested before the "trip" prefix it shares.
             currentRoute.startsWith("trips") -> VisibleContext(Screen.TRIP)
@@ -166,11 +189,24 @@ fun AppShell(
                 // parent-only start action (ANDTRIP-001/002/004).
                 TripStrip(
                     state = tripHome,
+                    plannerState = plannerState,
                     onStart = { showStartDialog = true },
+                    onPlan = { showPlanDialog = true },
                     onOpenHistory = {
                         navController.navigate(Routes.trips()) { launchSingleTop = true }
                     },
                 )
+                // The planned-trip card rides the no-active-trip banner area: between
+                // trips and on the first-launch welcome (ANDTRIP-006/007).
+                plannerState.card?.let { card ->
+                    PlannedTripCardView(
+                        card = card,
+                        tripError = tripError,
+                        onStart = { showActivateDialog = true },
+                        onEdit = { showPlanDialog = true },
+                        onDelete = { showDeletePlanDialog = true },
+                    )
+                }
                 NavHost(
                     navController = navController,
                     startDestination = Routes.JOURNAL,
@@ -201,6 +237,21 @@ fun AppShell(
                         profile = profile,
                         onOpenBoard = { id -> navController.navigate(Routes.board(id)) },
                         onOpenReplay = { id -> navController.navigate(Routes.replay(id)) },
+                        onOpenBingo = {
+                            navController.navigate(Routes.bingo()) { launchSingleTop = true }
+                        },
+                    )
+                }
+                composable(
+                    Routes.BINGO,
+                    arguments = listOf(
+                        navArgument("trip") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    ),
+                ) { entry ->
+                    BingoScreen(
+                        container = container,
+                        profile = profile,
+                        historyTripId = entry.arguments?.getString("trip"),
                     )
                 }
                 composable(
@@ -243,7 +294,14 @@ fun AppShell(
                         navArgument("trip") { type = NavType.StringType; nullable = true; defaultValue = null },
                     ),
                 ) { entry ->
-                    TripsScreen(container, entry.arguments?.getString("trip"))
+                    TripsScreen(
+                        container = container,
+                        profile = profile,
+                        initialTripId = entry.arguments?.getString("trip"),
+                        onOpenBingo = { tripId ->
+                            navController.navigate(Routes.bingo(tripId)) { launchSingleTop = true }
+                        },
+                    )
                 }
                 composable(Routes.SETTINGS) {
                     SettingsScreen(container, profile)
@@ -262,17 +320,63 @@ fun AppShell(
             onDismiss = { showStartDialog = false },
         )
     }
+
+    // ---- itinerary planner dialogs (ANDTRIP-006/008) ---------------------------------------
+    if (showPlanDialog) {
+        val editingTrip = plannerState.card?.trip
+        PlanTripDialog(
+            initialName = editingTrip?.name.orEmpty(),
+            initialStart = editingTrip?.plannedStartAt.orEmpty(),
+            editing = editingTrip != null,
+            onConfirm = { name, plannedStartAt ->
+                showPlanDialog = false
+                if (editingTrip == null) {
+                    container.createPlannedTrip(name, plannedStartAt)
+                } else {
+                    container.updatePlannedTrip(editingTrip.id, name, plannedStartAt)
+                }
+            },
+            onDismiss = { showPlanDialog = false },
+        )
+    }
+    plannerState.card?.let { card ->
+        if (showActivateDialog) {
+            ActivatePlannedTripDialog(
+                tripName = card.trip.name,
+                stagedCount = card.itinerary.size,
+                onConfirm = {
+                    showActivateDialog = false
+                    container.activatePlannedTrip(card.trip.id)
+                },
+                onDismiss = { showActivateDialog = false },
+            )
+        }
+        if (showDeletePlanDialog) {
+            DeletePlannedTripDialog(
+                tripName = card.trip.name,
+                onConfirm = {
+                    showDeletePlanDialog = false
+                    container.deletePlannedTrip(card.trip.id)
+                },
+                onDismiss = { showDeletePlanDialog = false },
+            )
+        }
+    }
 }
 
 /**
  * Slim strip under the top bar: shows the active trip's name while one runs, or the
  * persistent "No active road trip" banner (with the parent-only, online-only start
- * action) between trips and on first launch (ANDTRIP-001/002/004).
+ * action) between trips and on first launch (ANDTRIP-001/002/004). When a planned trip
+ * exists its card (rendered below the strip) carries the start action instead, and
+ * parents without a plan get the "Plan the next trip" entry point (ANDTRIP-006).
  */
 @Composable
 private fun TripStrip(
     state: TripHomeState,
+    plannerState: PlannerState,
     onStart: () -> Unit,
+    onPlan: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
     val banner = state.bannerText
@@ -292,6 +396,9 @@ private fun TripStrip(
         return
     }
 
+    // The planned card (below the strip) owns "Road trip starts now" while a plan exists.
+    val showGenericStart = state.startAction.visible && state.plannedTrip == null
+
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -305,6 +412,7 @@ private fun TripStrip(
                     Text(
                         when {
                             viewed != null -> "Browsing \"${viewed.name}\" (read-only)"
+                            state.plannedTrip != null -> "Welcome! The next road trip is planned below."
                             else -> "Welcome! Start your first road trip when you hit the road."
                         },
                         style = MaterialTheme.typography.labelSmall,
@@ -313,13 +421,18 @@ private fun TripStrip(
                 if (state.viewedTrip != null) {
                     TextButton(onClick = onOpenHistory) { Text("History") }
                 }
-                if (state.startAction.visible) {
+                if (plannerState.planAction.visible) {
+                    TextButton(onClick = onPlan, enabled = plannerState.planAction.enabled) {
+                        Text("Plan the next trip")
+                    }
+                }
+                if (showGenericStart) {
                     TextButton(onClick = onStart, enabled = state.startAction.enabled) {
                         Text("Road trip starts now")
                     }
                 }
             }
-            if (state.startAction.visible && !state.startAction.enabled) {
+            if (showGenericStart && !state.startAction.enabled) {
                 Text(
                     state.startAction.disabledReason.orEmpty(),
                     style = MaterialTheme.typography.labelSmall,
@@ -337,6 +450,7 @@ private fun titleFor(route: String?): String = when {
     route == Routes.GAMES -> "Games"
     route.startsWith("board/") -> "Game"
     route.startsWith("replay/") -> "Replay"
+    route.startsWith("bingo") -> "License plate bingo"
     route.startsWith("checklist") -> "Checklist"
     route.startsWith("trips") -> "Trip history"
     route.startsWith("trip") -> "Trip"

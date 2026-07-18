@@ -285,30 +285,43 @@ data class Leg(
 
 @Serializable
 enum class TripStatus {
+    @SerialName("planned") PLANNED,
     @SerialName("active") ACTIVE,
     @SerialName("ended") ENDED,
 }
 
-/** A named road trip (backend 12-trips.md); at most one is active at a time. */
+/**
+ * A named road trip (backend 12-trips.md); at most one is active — and at most one is
+ * planned (planner contract) — at a time. Planned trips carry an approximate free-text
+ * `planned_start_at` and no `started_at` yet (ANDTRIP-006).
+ */
 @Serializable
 data class Trip(
     val id: String,
     val name: String,
     val status: TripStatus,
-    @SerialName("started_at") val startedAt: String,
+    @SerialName("started_at") val startedAt: String? = null,
     @SerialName("ended_at") val endedAt: String? = null,
+    @SerialName("planned_start_at") val plannedStartAt: String? = null,
 )
 
-/** Body for POST /api/trips (parent-only; server default name when omitted). */
+/**
+ * Body for POST /api/trips (parent-only; server default name when omitted).
+ * `status: "planned"` creates the single planned "next trip" instead of starting one
+ * (409 `conflict` when a planned trip already exists, ANDTRIP-006).
+ */
 @Serializable
 data class TripCreateRequest(
     val name: String? = null,
+    val status: String? = null,
+    @SerialName("planned_start_at") val plannedStartAt: String? = null,
 )
 
-/** Body for PATCH /api/trips/{id} (parent-only rename). */
+/** Body for PATCH /api/trips/{id} (parent-only rename / planned re-date). */
 @Serializable
-data class TripRenameRequest(
-    val name: String,
+data class TripPatchRequest(
+    val name: String? = null,
+    @SerialName("planned_start_at") val plannedStartAt: String? = null,
 )
 
 @Serializable
@@ -321,6 +334,39 @@ data class TripSummary(
     @SerialName("games_played") val gamesPlayed: Int,
     @SerialName("wins_by_profile") val winsByProfile: Map<String, Int> = emptyMap(),
     @SerialName("journal_posts_by_profile") val journalPostsByProfile: Map<String, Int> = emptyMap(),
+)
+
+// ---- license plate bingo (GET /api/bingo, docs/spec/10-bingo.md) -----------------------
+
+/** One spotted state on the shared card (ANDBNG-001). */
+@Serializable
+data class BingoCell(
+    @SerialName("state_code") val stateCode: String,
+    @SerialName("spotted_by") val spottedBy: String,
+    @SerialName("spotted_at") val spottedAt: String,
+)
+
+@Serializable
+enum class BingoLogAction {
+    @SerialName("spotted") SPOTTED,
+    @SerialName("removed") REMOVED,
+}
+
+/** One line of the card's chronological history (ANDBNG-003). */
+@Serializable
+data class BingoLogEntry(
+    @SerialName("state_code") val stateCode: String,
+    val action: BingoLogAction,
+    @SerialName("profile_id") val profileId: String,
+    val ts: String,
+)
+
+/** Response of GET /api/bingo?trip= — cells, history log, per-profile standing counts. */
+@Serializable
+data class BingoCard(
+    val cells: List<BingoCell> = emptyList(),
+    val log: List<BingoLogEntry> = emptyList(),
+    val counts: Map<String, Int> = emptyMap(),
 )
 
 @Serializable

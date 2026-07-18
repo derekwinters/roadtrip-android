@@ -13,6 +13,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val BOARD = "board/{gameId}"
     const val REPLAY = "replay/{gameId}"
+    const val BINGO = "bingo?trip={trip}"
 
     fun map(lat: Double? = null, lon: Double? = null): String =
         if (lat != null && lon != null) "map?lat=$lat&lon=$lon" else "map"
@@ -30,6 +31,10 @@ object Routes {
     fun board(gameId: String): String = "board/$gameId"
 
     fun replay(gameId: String): String = "replay/$gameId"
+
+    /** License plate bingo; a trip id opens a past trip's card read-only (ANDBNG-004). */
+    fun bingo(tripId: String? = null): String =
+        if (tripId.isNullOrBlank()) "bingo" else "bingo?trip=$tripId"
 
     fun forTarget(target: NavTarget): String = when (target) {
         is NavTarget.Journal -> JOURNAL

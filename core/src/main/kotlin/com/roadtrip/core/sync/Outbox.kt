@@ -1,5 +1,6 @@
 package com.roadtrip.core.sync
 
+import com.roadtrip.core.bingo.UsStates
 import com.roadtrip.core.common.Clock
 import com.roadtrip.core.common.IdGenerator
 import com.roadtrip.core.common.UuidIdGenerator
@@ -29,6 +30,8 @@ data class OutboxEntry(
     companion object {
         const val TYPE_JOURNAL_POST = "journal.post"
         const val TYPE_LOCATION_PING = "location.ping"
+        const val TYPE_PLATE_SPOTTED = "plate.spotted"
+        const val TYPE_PLATE_UNSPOTTED = "plate.unspotted"
     }
 }
 
@@ -68,6 +71,24 @@ class OutboxQueue(
         },
         actorProfileId = actorProfileId,
     )
+
+    /**
+     * covers: ANDBNG-001 — bingo spots queue offline like journal posts, stamped with
+     * the tap time and attributed to the signed-in profile (no actor override).
+     */
+    fun enqueuePlateSpotted(stateCode: String): OutboxEntry = enqueuePlate(OutboxEntry.TYPE_PLATE_SPOTTED, stateCode)
+
+    /** covers: ANDBNG-002 — removals queue offline the same way. */
+    fun enqueuePlateUnspotted(stateCode: String): OutboxEntry = enqueuePlate(OutboxEntry.TYPE_PLATE_UNSPOTTED, stateCode)
+
+    private fun enqueuePlate(type: String, stateCode: String): OutboxEntry {
+        require(UsStates.byCode.containsKey(stateCode)) { "unknown state code: $stateCode" }
+        return enqueue(
+            type,
+            clientTs = clock.now(),
+            payload = buildJsonObject { put("state_code", stateCode) },
+        )
+    }
 
     private fun enqueue(
         type: String,

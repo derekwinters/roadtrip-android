@@ -41,6 +41,8 @@ import com.roadtrip.app.di.AppContainer
 import com.roadtrip.core.api.Destination
 import com.roadtrip.core.api.DestinationStatus
 import com.roadtrip.core.api.Profile
+import com.roadtrip.core.api.Trip
+import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.map.AddressSearch
 import com.roadtrip.core.map.AddressSearchState
@@ -91,6 +93,21 @@ fun MapScreen(
         }
     }
 
+    // With no active trip, parents stage the planned trip's itinerary from this screen —
+    // same panel, writes scoped by ?trip=<plannedId> (ANDTRIP-007, online-only).
+    val stagingTrip: Trip? = remember(tick) {
+        val trips = container.tripsCache.read()?.value.orEmpty()
+        if (trips.none { it.status == TripStatus.ACTIVE }) {
+            trips.firstOrNull { it.status == TripStatus.PLANNED }
+        } else {
+            null
+        }
+    }
+    val stagedDestinations: List<Destination> = remember(tick, stagingTrip) {
+        stagingTrip?.let { container.stagedDestinationsCache(it.id).read()?.value }.orEmpty()
+    }
+    val stagingEnabled = stagingTrip == null || online
+
     var longPressPoint by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var showCoordinateDialog by remember { mutableStateOf(false) }
 
@@ -100,7 +117,8 @@ fun MapScreen(
                 state = state,
                 centerLat = centerLat,
                 centerLon = centerLon,
-                allowLongPress = isParent,
+                // Staging the planned trip is online-only (ANDTRIP-007).
+                allowLongPress = isParent && stagingEnabled,
                 onLongPress = { lat, lon -> longPressPoint = lat to lon },
             )
 
@@ -145,7 +163,9 @@ fun MapScreen(
         if (isParent) {
             DestinationPanel(
                 container = container,
-                destinations = state?.destinationList.orEmpty(),
+                destinations = if (stagingTrip != null) stagedDestinations else state?.destinationList.orEmpty(),
+                stagingTrip = stagingTrip,
+                stagingEnabled = stagingEnabled,
                 onAddByCoordinates = { showCoordinateDialog = true },
             )
         }
@@ -160,7 +180,7 @@ fun MapScreen(
             editableCoordinates = false,
             onDismiss = { longPressPoint = null },
             onConfirm = { name, dLat, dLon ->
-                container.addDestination(name, dLat, dLon)
+                container.addDestination(name, dLat, dLon, stagingTrip?.id)
                 longPressPoint = null
             },
         )
@@ -175,7 +195,7 @@ fun MapScreen(
             editableCoordinates = true,
             onDismiss = { showCoordinateDialog = false },
             onConfirm = { name, dLat, dLon ->
-                container.addDestination(name, dLat, dLon)
+                container.addDestination(name, dLat, dLon, stagingTrip?.id)
                 showCoordinateDialog = false
             },
         )
@@ -272,32 +292,45 @@ private fun configureOsmdroid(context: Context) {
     config.userAgentValue = context.packageName
 }
 
-/** Parent-only destination admin (ANDMAP-006). */
+/**
+ * Parent-only destination admin (ANDMAP-006). With [stagingTrip] set (no active trip,
+ * a planned one exists) the same panel edits the planned trip's staged itinerary via
+ * `?trip=<plannedId>` — online-only like all destination admin (ANDTRIP-007).
+ */
 @Composable
 private fun DestinationPanel(
     container: AppContainer,
     destinations: List<Destination>,
+    stagingTrip: Trip?,
+    stagingEnabled: Boolean,
     onAddByCoordinates: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Destinations",
+                if (stagingTrip != null) "Planned trip stops" else "Destinations",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onAddByCoordinates) {
+            TextButton(onClick = onAddByCoordinates, enabled = stagingEnabled) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Text("Address / coordinates")
             }
         }
         Text(
-            "Long-press the map to add a stop.",
+            when {
+                stagingTrip != null && !stagingEnabled ->
+                    "Offline — staging \"${stagingTrip.name}\" needs the trip server."
+                stagingTrip != null ->
+                    "Staging \"${stagingTrip.name}\" — this itinerary is adopted when the trip starts. " +
+                        "Long-press the map to add a stop."
+                else -> "Long-press the map to add a stop."
+            },
             style = MaterialTheme.typography.labelSmall,
         )
         LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
             items(destinations, key = { it.id }) { destination ->
-                DestinationRow(container, destination, destinations)
+                DestinationRow(container, destination, destinations, stagingTrip?.id, stagingEnabled)
             }
         }
     }
@@ -308,6 +341,8 @@ private fun DestinationRow(
     container: AppContainer,
     destination: Destination,
     all: List<Destination>,
+    stagingTripId: String?,
+    stagingEnabled: Boolean,
 ) {
     val pending = destination.status == DestinationStatus.PENDING
     Row(
@@ -324,13 +359,22 @@ private fun DestinationRow(
             modifier = Modifier.weight(1f),
         )
         if (pending) {
-            IconButton(onClick = { reorder(container, destination, all, -1) }) {
+            IconButton(
+                onClick = { reorder(container, destination, all, -1, stagingTripId) },
+                enabled = stagingEnabled,
+            ) {
                 Icon(Icons.Filled.ArrowUpward, contentDescription = "Move up")
             }
-            IconButton(onClick = { reorder(container, destination, all, +1) }) {
+            IconButton(
+                onClick = { reorder(container, destination, all, +1, stagingTripId) },
+                enabled = stagingEnabled,
+            ) {
                 Icon(Icons.Filled.ArrowDownward, contentDescription = "Move down")
             }
-            IconButton(onClick = { container.removeDestination(destination.id) }) {
+            IconButton(
+                onClick = { container.removeDestination(destination.id, stagingTripId) },
+                enabled = stagingEnabled,
+            ) {
                 Icon(Icons.Filled.Delete, contentDescription = "Remove")
             }
         }
@@ -342,13 +386,14 @@ private fun reorder(
     destination: Destination,
     all: List<Destination>,
     delta: Int,
+    stagingTripId: String?,
 ) {
     val sorted = all.sortedBy { it.orderIndex }
     val index = sorted.indexOfFirst { it.id == destination.id }
     val targetIndex = index + delta
     if (index < 0 || targetIndex < 0 || targetIndex >= sorted.size) return
     if (sorted[targetIndex].status != DestinationStatus.PENDING) return
-    container.reorderDestination(destination.id, sorted[targetIndex].orderIndex)
+    container.reorderDestination(destination.id, sorted[targetIndex].orderIndex, stagingTripId)
 }
 
 @Composable

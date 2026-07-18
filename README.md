@@ -12,7 +12,12 @@ car-hotspot VPN and stays fully usable offline.
   position, and the next destination; parents manage the full destination list (long-press
   pin, coordinates, or address search via the backend geocode proxy).
 - **Games** — chess, checkers, tic-tac-toe, ultimate tic-tac-toe, hangman: lobby,
-  challenges, live spectating, and replays.
+  challenges, live spectating, and replays — plus **license plate bingo**: one shared
+  50-states-+-DC card per trip that anyone can fill, offline-friendly, with a history log
+  and per-spotter standings.
+- **Trips & planner** — parents start/end named road trips; between trips the family can
+  plan the **next trip** (name, approximate start, staged itinerary from the map) and
+  launch it with one tap — the staged stops become the trip's destination list.
 - **Location tracking** — only the parent phone runs the foreground tracker (5-minute pings,
   offline-queued); tablets never request location permissions.
 - **Notifications** — local notifications on phones and tablets for received challenges and

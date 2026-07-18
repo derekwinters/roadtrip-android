@@ -29,10 +29,13 @@ interface RoadtripApi {
     suspend fun getConfig(): Config
     suspend fun putConfig(patch: ConfigPatch): Config
 
-    suspend fun getDestinations(): List<Destination>
-    suspend fun createDestination(create: DestinationCreate): Destination
-    suspend fun updateDestination(id: String, patch: DestinationPatch): Destination
-    suspend fun deleteDestination(id: String)
+    // Destination reads/writes accept an optional trip scope (?trip=<id>) so parents can
+    // stage the planned trip's itinerary ahead of time (planner contract, ANDTRIP-007);
+    // null keeps the server default (the active trip's list).
+    suspend fun getDestinations(trip: String? = null): List<Destination>
+    suspend fun createDestination(create: DestinationCreate, trip: String? = null): Destination
+    suspend fun updateDestination(id: String, patch: DestinationPatch, trip: String? = null): Destination
+    suspend fun deleteDestination(id: String, trip: String? = null)
 
     /**
      * Address search through the backend's geocode proxy (parent-only): up to 5 matches
@@ -66,16 +69,32 @@ interface RoadtripApi {
     suspend fun getLeg(destinationId: String): Leg
     suspend fun getTripSummary(): TripSummary
 
-    // ---- trips (backend 12-trips.md; ANDTRIP) ----------------------------------------
+    // ---- trips (backend 12-trips.md + planner contract; ANDTRIP) ------------------------
     suspend fun getTrips(): List<Trip>
 
     /** 409 `conflict` when a trip is already active (TRIP-001). */
     suspend fun createTrip(name: String? = null): Trip
     suspend fun endTrip(id: String): Trip
-    suspend fun renameTrip(id: String, name: String): Trip
+
+    /** POST /api/trips {status:"planned"} — 409 `conflict` when one is already planned (ANDTRIP-006). */
+    suspend fun createPlannedTrip(name: String? = null, plannedStartAt: String? = null): Trip
+
+    /** POST /api/trips/{id}/start — activates the planned trip; 409 while another is active (ANDTRIP-008). */
+    suspend fun startTrip(id: String): Trip
+
+    /** PATCH /api/trips/{id} {name?, planned_start_at?} (parent-only, ANDTRIP-006). */
+    suspend fun patchTrip(id: String, name: String? = null, plannedStartAt: String? = null): Trip
+
+    /** DELETE /api/trips/{id} — planned trips only (ANDTRIP-006). */
+    suspend fun deleteTrip(id: String)
+
+    suspend fun renameTrip(id: String, name: String): Trip = patchTrip(id, name = name)
 
     /** Per-trip aggregate, GET /api/trips/{id}/summary (TRIP-008). */
     suspend fun getTripSummary(tripId: String): TripSummary
+
+    /** The license-plate bingo card (GET /api/bingo?trip=, docs/spec/10-bingo.md). */
+    suspend fun getBingo(trip: String? = null): BingoCard
 
     suspend fun getGames(status: GameStatus? = null, profileId: String? = null): List<Game>
     suspend fun createGame(request: CreateGameRequest): Game

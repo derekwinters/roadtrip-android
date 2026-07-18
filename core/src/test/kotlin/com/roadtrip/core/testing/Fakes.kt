@@ -95,9 +95,29 @@ object TestData {
         id: String = "trip-1",
         name: String = "Summer Loop",
         status: TripStatus = TripStatus.ACTIVE,
-        startedAt: String = ts(0),
+        startedAt: String? = ts(0),
         endedAt: String? = null,
-    ): Trip = Trip(id = id, name = name, status = status, startedAt = startedAt, endedAt = endedAt)
+        plannedStartAt: String? = null,
+    ): Trip = Trip(
+        id = id,
+        name = name,
+        status = status,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        plannedStartAt = plannedStartAt,
+    )
+
+    fun plannedTrip(
+        id: String = "trip-plan",
+        name: String = "Desert Loop",
+        plannedStartAt: String? = "~ early August",
+    ): Trip = trip(id, name, TripStatus.PLANNED, startedAt = null, plannedStartAt = plannedStartAt)
+
+    fun plateSpottedEvent(seq: Long, stateCode: String, actorId: String, clientTs: String = ts(seq)): EventDto =
+        event(seq, "plate.spotted", buildJsonObject { put("state_code", stateCode) }, actorId, clientTs)
+
+    fun plateUnspottedEvent(seq: Long, stateCode: String, actorId: String, clientTs: String = ts(seq)): EventDto =
+        event(seq, "plate.unspotted", buildJsonObject { put("state_code", stateCode) }, actorId, clientTs)
 
     fun game(
         id: String = "g-1",

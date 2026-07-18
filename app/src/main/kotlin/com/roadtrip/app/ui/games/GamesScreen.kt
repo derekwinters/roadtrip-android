@@ -51,6 +51,7 @@ fun GamesScreen(
     profile: Profile,
     onOpenBoard: (String) -> Unit,
     onOpenReplay: (String) -> Unit,
+    onOpenBingo: () -> Unit,
 ) {
     val tick by container.refreshTick.collectAsState()
     val online by container.onlineMonitor.online.collectAsState()
@@ -104,6 +105,28 @@ fun GamesScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             ) {
+                // License plate bingo: the whole family fills one card together; spots
+                // queue offline, so the entry never needs the online gate (ANDBNG-001).
+                item { SectionHeader("Family games") }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("License plate bingo", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "Spot all 50 states + DC — works offline",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(onClick = onOpenBingo) { Text("Open") }
+                        }
+                    }
+                }
+
                 item { SectionHeader("My games") }
                 if (lobby.myGames.isEmpty()) {
                     item { Text("No active games", style = MaterialTheme.typography.bodyMedium) }

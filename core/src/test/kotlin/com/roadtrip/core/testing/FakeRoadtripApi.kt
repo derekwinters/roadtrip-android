@@ -1,6 +1,7 @@
 package com.roadtrip.core.testing
 
 import com.roadtrip.core.api.ApiException
+import com.roadtrip.core.api.BingoCard
 import com.roadtrip.core.api.Checklist
 import com.roadtrip.core.api.ClientEvent
 import com.roadtrip.core.api.Config
@@ -142,15 +143,36 @@ class FakeRoadtripApi : RoadtripApi {
         return config
     }
 
-    override suspend fun getDestinations(): List<Destination> {
+    /** Destinations staged against a specific (planned) trip via ?trip=<id> (ANDTRIP-007). */
+    val destinationsByTrip = mutableMapOf<String, List<Destination>>()
+
+    private var nextDestNo = 1
+
+    override suspend fun getDestinations(trip: String?): List<Destination> {
         guard()
+        if (trip != null) return destinationsByTrip[trip].orEmpty()
         return destinations
     }
 
-    override suspend fun createDestination(create: DestinationCreate): Destination {
+    override suspend fun createDestination(create: DestinationCreate, trip: String?): Destination {
         guard()
+        if (trip != null) {
+            requireTrip(trip) // staging targets an existing (planned) trip
+            val staged = destinationsByTrip[trip].orEmpty()
+            val destination = Destination(
+                id = "dest-${nextDestNo++}",
+                name = create.name,
+                lat = create.lat,
+                lon = create.lon,
+                orderIndex = create.orderIndex ?: staged.size,
+                // Nothing is "next" until the trip actually starts.
+                status = DestinationStatus.PENDING,
+            )
+            destinationsByTrip[trip] = staged + destination
+            return destination
+        }
         val destination = Destination(
-            id = "dest-${destinations.size + 1}",
+            id = "dest-${nextDestNo++}",
             name = create.name,
             lat = create.lat,
             lon = create.lon,
@@ -165,21 +187,31 @@ class FakeRoadtripApi : RoadtripApi {
         return destination
     }
 
-    override suspend fun updateDestination(id: String, patch: DestinationPatch): Destination {
+    override suspend fun updateDestination(id: String, patch: DestinationPatch, trip: String?): Destination {
         guard()
-        val existing = destinations.first { it.id == id }
-        val updated = existing.copy(
+        fun patched(existing: Destination) = existing.copy(
             name = patch.name ?: existing.name,
             lat = patch.lat ?: existing.lat,
             lon = patch.lon ?: existing.lon,
             orderIndex = patch.orderIndex ?: existing.orderIndex,
         )
+        if (trip != null) {
+            val staged = destinationsByTrip[trip].orEmpty()
+            val updated = patched(staged.first { it.id == id })
+            destinationsByTrip[trip] = staged.map { if (it.id == id) updated else it }
+            return updated
+        }
+        val updated = patched(destinations.first { it.id == id })
         destinations = destinations.map { if (it.id == id) updated else it }
         return updated
     }
 
-    override suspend fun deleteDestination(id: String) {
+    override suspend fun deleteDestination(id: String, trip: String?) {
         guard()
+        if (trip != null) {
+            destinationsByTrip[trip] = destinationsByTrip[trip].orEmpty().filterNot { it.id == id }
+            return
+        }
         destinations = destinations.filterNot { it.id == id }
     }
 
@@ -315,18 +347,87 @@ class FakeRoadtripApi : RoadtripApi {
         return ended
     }
 
-    override suspend fun renameTrip(id: String, name: String): Trip {
+    // ---- planned "next trip" (planner contract, ANDTRIP-006/007/008) -------------------
+
+    override suspend fun createPlannedTrip(name: String?, plannedStartAt: String?): Trip {
+        guard()
+        if (trips.any { it.status == TripStatus.PLANNED }) {
+            throw ApiException(409, "conflict", "a trip is already planned")
+        }
+        val n = nextTripNo++
+        val trip = Trip(
+            id = "trip-$n",
+            name = name ?: "Next Road Trip",
+            status = TripStatus.PLANNED,
+            startedAt = null,
+            plannedStartAt = plannedStartAt,
+        )
+        trips += trip
+        return trip
+    }
+
+    override suspend fun startTrip(id: String): Trip {
         guard()
         val index = trips.indexOfFirst { it.id == id }
         val existing = trips.getOrNull(index) ?: throw ApiException(404, "not_found", "no such trip")
-        val renamed = existing.copy(name = name)
-        trips[index] = renamed
-        return renamed
+        if (trips.any { it.status == TripStatus.ACTIVE }) {
+            throw ApiException(409, "conflict", "a trip is already active")
+        }
+        if (existing.status != TripStatus.PLANNED) {
+            throw ApiException(409, "conflict", "trip is not planned")
+        }
+        val started = existing.copy(status = TripStatus.ACTIVE, startedAt = TestData.ts(nextTripNo++ * 1000L))
+        trips[index] = started
+        // Activation adopts the staged itinerary as the active destination list; the
+        // first staged stop becomes the next leg's target (ANDTRIP-008).
+        destinations = destinationsByTrip[id].orEmpty()
+            .sortedBy { it.orderIndex }
+            .mapIndexed { i, d -> if (i == 0) d.copy(status = DestinationStatus.ACTIVE) else d }
+        return started
     }
+
+    override suspend fun patchTrip(id: String, name: String?, plannedStartAt: String?): Trip {
+        guard()
+        val index = trips.indexOfFirst { it.id == id }
+        val existing = trips.getOrNull(index) ?: throw ApiException(404, "not_found", "no such trip")
+        val patched = existing.copy(
+            name = name ?: existing.name,
+            plannedStartAt = plannedStartAt ?: existing.plannedStartAt,
+        )
+        trips[index] = patched
+        return patched
+    }
+
+    override suspend fun deleteTrip(id: String) {
+        guard()
+        val existing = trips.firstOrNull { it.id == id } ?: throw ApiException(404, "not_found", "no such trip")
+        if (existing.status != TripStatus.PLANNED) {
+            throw ApiException(409, "conflict", "only planned trips can be deleted")
+        }
+        trips.removeAll { it.id == id }
+        destinationsByTrip.remove(id)
+    }
+
+    private fun requireTrip(id: String): Trip =
+        trips.firstOrNull { it.id == id } ?: throw ApiException(404, "not_found", "no such trip")
 
     override suspend fun getTripSummary(tripId: String): TripSummary {
         guard()
         return summaryByTrip[tripId] ?: tripSummary
+    }
+
+    // ---- bingo (GET /api/bingo, ANDBNG) -------------------------------------------------
+
+    /** Default-scope bingo card (active trip, else most recently ended). */
+    var bingoCard: BingoCard = BingoCard()
+
+    /** Per-trip cards for the ?trip=<id> parameter (read-only history, ANDBNG-004). */
+    val bingoByTrip = mutableMapOf<String, BingoCard>()
+
+    override suspend fun getBingo(trip: String?): BingoCard {
+        guard()
+        if (trip != null) return bingoByTrip[trip] ?: BingoCard()
+        return bingoCard
     }
 
     override suspend fun getGames(status: GameStatus?, profileId: String?): List<Game> {

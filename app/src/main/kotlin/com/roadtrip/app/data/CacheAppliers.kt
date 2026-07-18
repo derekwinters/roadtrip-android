@@ -1,11 +1,14 @@
 package com.roadtrip.app.data
 
+import com.roadtrip.core.api.BingoCard
 import com.roadtrip.core.api.ChecklistStateEntry
 import com.roadtrip.core.api.Checklist
 import com.roadtrip.core.api.EventDto
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.MapState
+import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.TrackPoint
+import com.roadtrip.core.bingo.BingoReducer
 import com.roadtrip.core.common.Clock
 import com.roadtrip.core.games.LobbyReducer
 import com.roadtrip.core.storage.CacheStore
@@ -76,6 +79,33 @@ class ChecklistCacheApplier(
             )
         }
         cache.write(checklist, clock.now())
+    }
+}
+
+/**
+ * Folds live plate.* events into the cached bingo card via the core reducer, so cells
+ * fill/clear without a reload (ANDBNG-004). Never touches notifications or the journal
+ * (ANDBNG-005).
+ */
+class BingoCacheApplier(
+    private val cache: CacheStore<BingoCard>,
+    cursors: CursorStore,
+    private val clock: Clock,
+    private val profileLookup: (String) -> Profile? = { null },
+) : SeqGuardedApplier(cursors, "applied_bingo_seq") {
+    override fun applyFresh(events: List<EventDto>) {
+        val plateEvents = events.filter { it.type.startsWith("plate.") }
+        if (plateEvents.isEmpty()) return
+        var card = cache.read()?.value ?: return
+        val profilesById = plateEvents
+            .mapNotNull { it.actorId }
+            .distinct()
+            .mapNotNull(profileLookup)
+            .associateBy { it.id }
+        for (event in plateEvents) {
+            card = BingoReducer.applyEvent(card, event, profilesById)
+        }
+        cache.write(card, clock.now())
     }
 }
 

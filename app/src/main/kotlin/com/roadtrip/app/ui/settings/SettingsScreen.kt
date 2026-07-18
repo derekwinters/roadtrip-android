@@ -35,6 +35,7 @@ import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.location.TrackerService
 import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.app.ui.common.SectionHeader
+import com.roadtrip.app.ui.trips.ActivatePlannedTripDialog
 import com.roadtrip.app.ui.trips.EndTripDialog
 import com.roadtrip.app.ui.trips.StartTripDialog
 import com.roadtrip.core.api.Profile
@@ -125,6 +126,10 @@ fun SettingsScreen(
                     "No active road trip — last trip: ${phase.lastTrip.name}",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                is TripPhase.Planned -> Text(
+                    "Next trip planned: ${phase.trip.name}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 TripPhase.FirstLaunch -> Text(
                     "No road trip yet.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -152,14 +157,30 @@ fun SettingsScreen(
             }
             tripError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
+            val plannedTrip = tripHome.plannedTrip
             if (showStartDialog) {
-                StartTripDialog(
-                    onConfirm = { name ->
-                        showStartDialog = false
-                        container.startTrip(name)
-                    },
-                    onDismiss = { showStartDialog = false },
-                )
+                if (plannedTrip != null) {
+                    // A planned trip exists: "starts now" activates it, adopting the
+                    // staged itinerary (ANDTRIP-006/008).
+                    ActivatePlannedTripDialog(
+                        tripName = plannedTrip.name,
+                        stagedCount = container.stagedDestinationsCache(plannedTrip.id)
+                            .read()?.value.orEmpty().size,
+                        onConfirm = {
+                            showStartDialog = false
+                            container.activatePlannedTrip(plannedTrip.id)
+                        },
+                        onDismiss = { showStartDialog = false },
+                    )
+                } else {
+                    StartTripDialog(
+                        onConfirm = { name ->
+                            showStartDialog = false
+                            container.startTrip(name)
+                        },
+                        onDismiss = { showStartDialog = false },
+                    )
+                }
             }
             val activeTrip = (tripHome.phase as? TripPhase.Active)?.trip
             if (showEndDialog && activeTrip != null) {

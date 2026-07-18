@@ -1,5 +1,6 @@
 package com.roadtrip.core.trips
 
+import com.roadtrip.core.api.BingoCard
 import com.roadtrip.core.api.Checklist
 import com.roadtrip.core.api.JournalPage
 import com.roadtrip.core.api.RoadtripApi
@@ -17,11 +18,22 @@ sealed class TripPhase {
     /** First-ever launch: no trips exist yet — welcome/empty state. */
     object FirstLaunch : TripPhase()
 
+    /** First launch with only a planned "next trip": welcome plus the planned card (ANDTRIP-006). */
+    data class Planned(val trip: Trip) : TripPhase()
+
     data class Active(val trip: Trip) : TripPhase()
 
     /** Between trips: the most recently ended trip is browsable read-only. */
     data class BetweenTrips(val lastTrip: Trip) : TripPhase()
 }
+
+/**
+ * Lifecycle sort key: ended time, else started time; planned trips (no timestamps yet)
+ * sort last. Shared by the reducer and the history list so planned trips never break
+ * timestamp ordering (ANDTRIP-006).
+ */
+fun Trip.lifecycleInstant(): Instant =
+    (endedAt ?: startedAt)?.let(Timestamps::parse) ?: Instant.EPOCH
 
 /** A parent-only, online-only, dialog-confirmed trip action (ANDTRIP-001/004). */
 data class TripAction(
@@ -41,6 +53,12 @@ data class TripHomeState(
     val endAction: TripAction,
     /** The tracker never runs between trips (interface decision, 09-trips.md). */
     val trackerAllowed: Boolean,
+    /**
+     * The planned "next trip", surfaced wherever the no-active-trip banner shows — the
+     * planned-trip card rides along between trips and on first launch (ANDTRIP-006).
+     * Null while a trip is active (the card stays out of the way).
+     */
+    val plannedTrip: Trip? = null,
 )
 
 /**
@@ -59,9 +77,11 @@ object TripStateReducer {
     fun reduce(trips: List<Trip>, role: Role, online: Boolean): TripHomeState {
         val active = trips.firstOrNull { it.status == TripStatus.ACTIVE }
         val lastEnded = mostRecentlyEnded(trips)
+        val planned = trips.firstOrNull { it.status == TripStatus.PLANNED }
         val phase = when {
             active != null -> TripPhase.Active(active)
             lastEnded != null -> TripPhase.BetweenTrips(lastEnded)
+            planned != null -> TripPhase.Planned(planned)
             else -> TripPhase.FirstLaunch
         }
         val parent = role == Role.PARENT
@@ -80,13 +100,14 @@ object TripStateReducer {
             bannerText = if (active == null) NO_ACTIVE_TRIP_BANNER else null,
             startAction = action(applies = active == null),
             endAction = action(applies = active != null),
+            // A planned trip is still "between trips" for the tracker (ANDTRIP-002).
             trackerAllowed = active != null,
+            plannedTrip = if (active == null) planned else null,
         )
     }
 
     private fun mostRecentlyEnded(trips: List<Trip>): Trip? =
-        trips.filter { it.status == TripStatus.ENDED }
-            .maxByOrNull { Timestamps.parse(it.endedAt ?: it.startedAt) }
+        trips.filter { it.status == TripStatus.ENDED }.maxByOrNull { it.lifecycleInstant() }
 }
 
 /** Trip-scoped cache keys, e.g. `journal_trip-1`, so histories never mix (ANDTRIP-002). */
@@ -117,19 +138,26 @@ class TripScopedCacheStore<T>(
 
 /**
  * Read-only trip history browsing (ANDTRIP-003): lists trips (active first, then most
- * recently ended first) and opens each trip's journal/checklist/summary through the
- * `?trip=<id>` scoped read models — never through the live caches.
+ * recently ended first) and opens each trip's journal/checklist/summary/bingo through
+ * the `?trip=<id>` scoped read models — never through the live caches. Planned trips
+ * have no history yet, so they never appear here (their home is the planner card,
+ * ANDTRIP-006).
  */
 class TripHistoryBrowser(private val api: RoadtripApi) {
     suspend fun listTrips(): List<Trip> =
-        api.getTrips().sortedWith(
-            compareBy<Trip> { it.status != TripStatus.ACTIVE }
-                .thenByDescending { Timestamps.parse(it.endedAt ?: it.startedAt) },
-        )
+        api.getTrips()
+            .filter { it.status != TripStatus.PLANNED }
+            .sortedWith(
+                compareBy<Trip> { it.status != TripStatus.ACTIVE }
+                    .thenByDescending { it.lifecycleInstant() },
+            )
 
     suspend fun journal(tripId: String): JournalPage = api.getJournal(trip = tripId)
 
     suspend fun checklist(tripId: String): Checklist = api.getChecklist(trip = tripId)
 
     suspend fun summary(tripId: String): TripSummary = api.getTripSummary(tripId)
+
+    /** A past trip's bingo card, rendered read-only (ANDBNG-004). */
+    suspend fun bingo(tripId: String): BingoCard = api.getBingo(trip = tripId)
 }
