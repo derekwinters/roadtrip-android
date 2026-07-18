@@ -39,6 +39,7 @@ One APK serves everything:
 | AND-005 | The app is fully navigable offline: cached journal, map (last known state), checklist, and summaries render without connectivity; online-only actions (game moves) show a clear offline state instead of failing silently. | auto |
 | AND-006 | An online/offline indicator reflects reachability of `GET /api/health`, re-checked on connectivity changes and sync attempts. | auto |
 | AND-007 | When `GET /api/profiles` returns an empty list, the profile picker shows a first-run "Set up your family" flow that creates the first profile (parent role enforced by the flow) and signs in as them; with one or more profiles the picker is the select-only avatar grid with no create affordance. | auto |
+| AND-008 | The server address is editable before sign-in: the profile picker exposes a server-settings affordance in every state (header) and prominently in the unreachable state; an unreachable server with no usable cached profile list is a distinct unreachable state — never the first-run setup, which appears only after the server confirmed zero profiles — showing the current address, an explicit Retry, and the address editor (prefilled, with an emulator-host hint); saving an address (even unchanged), tapping Retry, or connectivity returning re-probes `GET /api/profiles` immediately. | auto |
 
 ## Spec index
 

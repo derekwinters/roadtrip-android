@@ -91,6 +91,19 @@ class ProfilePickerTest {
     }
 
     @Test
+    fun `load failure maps to unreachable never first-run setup AND-008`() {
+        // No cache at all: the picker is dead-ended, not in setup (setup needs the server).
+        assertEquals(ProfilePickerState.Unreachable, ProfilePickerReducer.reduce(null, loadFailed = true))
+        // A cached-but-empty list is no proof of zero profiles — still unreachable.
+        assertEquals(ProfilePickerState.Unreachable, ProfilePickerReducer.reduce(emptyList(), loadFailed = true))
+        // Cached profiles keep offline selection working (AND-005).
+        assertEquals(
+            ProfilePickerState.Grid(listOf(TestData.parent)),
+            ProfilePickerReducer.reduce(listOf(TestData.parent), loadFailed = true),
+        )
+    }
+
+    @Test
     fun `derives visibility from the role attribute never from names AND-003`() {
         // A kid named like a parent is still a kid: only the role record matters.
         val trickyKid = Profile("p-9", "Mom", "cat", Role.KID)

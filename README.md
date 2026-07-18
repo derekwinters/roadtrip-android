@@ -5,7 +5,8 @@ Talks to [roadtrip-backend](https://github.com/derekwinters/roadtrip-backend) ov
 car-hotspot VPN and stays fully usable offline.
 
 - **Profiles** — passwordless avatar picker; the first launch walks through family setup,
-  starting with a parent profile.
+  starting with a parent profile. The server address is fixable right from the picker —
+  before any sign-in — with retry and automatic re-probe when connectivity returns.
 - **Journal** — the shared family feed: manual posts from anyone plus automatic entries
   (stops, state crossings, game results, arrivals) with deep links.
 - **Map** — "you are here" with breadcrumb trail and progress; kids see start, current
