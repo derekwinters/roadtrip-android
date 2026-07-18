@@ -1,5 +1,6 @@
 package com.roadtrip.core.profiles
 
+import com.roadtrip.core.api.ApiException
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.storage.InMemorySelectedProfileStore
@@ -66,18 +67,91 @@ class ProfilePickerTest {
     }
 
     @Test
-    fun `create-first flow creates a parent profile and signs in as them AND-007`() = runTest {
+    fun `create-first flow creates a parent profile with no avatar and signs in AND-007`() = runTest {
         api.profiles = emptyList()
         val picker = ProfilePicker(api, store)
 
-        val created = picker.createFirstProfile("Derek", "bear")
+        val result = picker.runFirstRunCreate("Derek")
 
-        // The flow enforces the parent role (backend bootstrap accepts parent-first only).
+        val created = (result as FirstRunCreateResult.SignedIn).profile
+        // The flow enforces the parent role (backend bootstrap accepts parent-first only)
+        // and sends no avatar — the wizard has no avatar input; the server assigns its default.
         assertEquals(Role.PARENT, api.createProfileRequests.single().role)
+        assertNull(api.createProfileRequests.single().avatar)
         assertEquals(Role.PARENT, created.role)
         assertEquals("Derek", created.name)
         // ...and immediately signs in as the new profile.
         assertEquals(created, picker.selected())
+    }
+
+    @Test
+    fun `closed-bootstrap 401 with profiles on re-probe leaves setup for the grid AND-009`() = runTest {
+        api.createProfileError = ApiException(401, "unauthenticated", "Unknown or missing profile")
+        api.profiles = listOf(TestData.parent, TestData.kid) // setup finished elsewhere
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runFirstRunCreate("Derek")
+
+        // The wizard hands the fresh list to the picker instead of dead-ending on the 401…
+        assertEquals(
+            FirstRunCreateResult.ProfilesAppeared(listOf(TestData.parent, TestData.kid)),
+            result,
+        )
+        // …and never guesses who this device belongs to.
+        assertNull(picker.selected())
+    }
+
+    @Test
+    fun `closed-bootstrap 401 with a still-empty list means an older server AND-009`() = runTest {
+        api.createProfileError = ApiException(401, "unauthenticated", "Unknown or missing profile")
+        api.profiles = emptyList() // the server refused first-run setup outright
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runFirstRunCreate("Derek")
+
+        val failed = result as FirstRunCreateResult.Failed
+        // Actionable: the server predates first-run setup — update it. Never the raw envelope.
+        assertTrue(failed.message.contains("update", ignoreCase = true), failed.message)
+        assertFalse(failed.message.contains("Unknown or missing", ignoreCase = true))
+        assertNull(picker.selected())
+    }
+
+    @Test
+    fun `re-probe failure after a 401 keeps a human offline message AND-009`() = runTest {
+        api.createProfileError = ApiException(401, "unauthenticated", "Unknown or missing profile")
+        api.offline = true // the follow-up GET /api/profiles cannot be reached
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runFirstRunCreate("Derek")
+
+        val failed = result as FirstRunCreateResult.Failed
+        assertTrue(failed.message.contains("connection", ignoreCase = true), failed.message)
+        assertNull(picker.selected())
+    }
+
+    @Test
+    fun `transport failure on create keeps the wizard retryable with an offline message AND-009`() = runTest {
+        api.profiles = emptyList()
+        api.offline = true
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runFirstRunCreate("Derek")
+
+        val failed = result as FirstRunCreateResult.Failed
+        assertTrue(failed.message.contains("connection", ignoreCase = true), failed.message)
+        assertNull(picker.selected())
+    }
+
+    @Test
+    fun `non-401 server rejections surface their own message AND-009`() = runTest {
+        api.createProfileError = ApiException(400, "validation", "name: String must contain at most 40 character(s)")
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runFirstRunCreate("x".repeat(41))
+
+        val failed = result as FirstRunCreateResult.Failed
+        assertTrue(failed.message.contains("name"), failed.message)
+        assertNull(picker.selected())
     }
 
     @Test

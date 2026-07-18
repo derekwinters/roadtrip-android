@@ -40,6 +40,7 @@ import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.common.SystemClock
+import com.roadtrip.core.profiles.FirstRunCreateResult
 import com.roadtrip.core.profiles.ProfilePicker
 import com.roadtrip.core.profiles.ProfilePickerLoader
 import com.roadtrip.core.profiles.ProfilePickerState
@@ -95,7 +96,9 @@ fun ProfilePickerScreen(container: AppContainer) {
 
         val current = state
         if (current is ProfilePickerState.SetupRequired) {
-            FirstRunSetup(picker, container)
+            // A closed bootstrap with profiles on re-probe drops the wizard for the
+            // ordinary select-only grid (AND-009).
+            FirstRunSetup(picker, container, onProfilesAppeared = { state = ProfilePickerState.Grid(it) })
         } else {
             Text("Who are you?", style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(24.dp))
@@ -224,15 +227,20 @@ private fun ProfileGrid(container: AppContainer, profiles: List<Profile>) {
 
 /**
  * First-run family setup (AND-007): creates the first profile — parent role enforced by
- * the flow, matching the backend's zero-profiles bootstrap — and signs in as them. Only
- * ever shown after the server itself confirmed zero profiles, never while unreachable
- * (AND-008).
+ * the flow, matching the backend's zero-profiles bootstrap — and signs in as them. Name
+ * only: no avatar input, the server assigns its default. Only ever shown after the server
+ * itself confirmed zero profiles, never while unreachable (AND-008). Create failures are
+ * human-readable and keep the wizard retryable; a closed bootstrap that re-probes into a
+ * profile list exits to the grid via [onProfilesAppeared] (AND-009).
  */
 @Composable
-private fun FirstRunSetup(picker: ProfilePicker, container: AppContainer) {
+private fun FirstRunSetup(
+    picker: ProfilePicker,
+    container: AppContainer,
+    onProfilesAppeared: (List<Profile>) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
-    var avatar by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -245,11 +253,6 @@ private fun FirstRunSetup(picker: ProfilePicker, container: AppContainer) {
         onValueChange = { name = it },
         label = { Text("Name") },
     )
-    OutlinedTextField(
-        value = avatar,
-        onValueChange = { avatar = it },
-        label = { Text("Avatar (emoji)") },
-    )
     Spacer(Modifier.height(16.dp))
     Button(
         enabled = name.isNotBlank() && !creating,
@@ -257,18 +260,17 @@ private fun FirstRunSetup(picker: ProfilePicker, container: AppContainer) {
             creating = true
             error = null
             scope.launch {
-                val result = withContext(Dispatchers.IO) {
-                    runCatching { picker.createFirstProfile(name.trim(), avatar.trim().ifBlank { null }) }
-                }
-                result.fold(
-                    // createFirstProfile already signed the new parent in; selectProfile
+                val result = withContext(Dispatchers.IO) { picker.runFirstRunCreate(name.trim()) }
+                when (result) {
+                    // runFirstRunCreate already signed the new parent in; selectProfile
                     // re-affirms it and kicks off the first sync (AND-002).
-                    onSuccess = { container.selectProfile(it) },
-                    onFailure = {
+                    is FirstRunCreateResult.SignedIn -> container.selectProfile(result.profile)
+                    is FirstRunCreateResult.ProfilesAppeared -> onProfilesAppeared(result.profiles)
+                    is FirstRunCreateResult.Failed -> {
                         creating = false
-                        error = it.message ?: "Could not create the profile"
-                    },
-                )
+                        error = result.message
+                    }
+                }
             }
         },
     ) {

@@ -1,11 +1,13 @@
 package com.roadtrip.core.profiles
 
+import com.roadtrip.core.api.ApiException
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.RoadtripApi
 import com.roadtrip.core.common.Clock
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.storage.CacheStore
 import com.roadtrip.core.storage.SelectedProfileStore
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -31,13 +33,74 @@ class ProfilePicker(
      * The parent role is enforced by the flow — the backend's zero-profiles bootstrap
      * accepts an unauthenticated POST /api/profiles only for role=parent — and the call
      * carries no `X-Profile-Id` because nobody is signed in yet ([RoadtripApi]
-     * implementations omit the header when there is no selected profile).
+     * implementations omit the header when there is no selected profile). No avatar is
+     * sent: the wizard has no avatar input and the server assigns its default.
+     *
+     * Failures never dead-end the wizard (AND-009). A 401 means the server's bootstrap
+     * is closed, so the flow re-probes `GET /api/profiles` to find out why: profiles
+     * appeared (setup finished elsewhere — lost race, or a retry whose first attempt
+     * committed) hands the list back for the ordinary grid, selecting nobody; a
+     * still-empty list means the server predates first-run setup, reported as an
+     * actionable update-the-server message rather than the raw envelope. Transport
+     * failures on either call keep a human offline message.
      */
-    suspend fun createFirstProfile(name: String, avatar: String?): Profile {
-        val created = api.createProfile(name, avatar, Role.PARENT)
+    suspend fun runFirstRunCreate(name: String): FirstRunCreateResult {
+        val created = try {
+            api.createProfile(name, avatar = null, role = Role.PARENT)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ApiException) {
+            return if (e.status == 401) {
+                recoverFromClosedBootstrap()
+            } else {
+                FirstRunCreateResult.Failed(e.message ?: CREATE_FAILED_MESSAGE)
+            }
+        } catch (e: IOException) {
+            return FirstRunCreateResult.Failed(OFFLINE_MESSAGE)
+        }
         store.set(created)
-        return created
+        return FirstRunCreateResult.SignedIn(created)
     }
+
+    private suspend fun recoverFromClosedBootstrap(): FirstRunCreateResult = try {
+        val profiles = load()
+        if (profiles.isEmpty()) {
+            // A live server that lists zero profiles yet refuses the bootstrap create
+            // predates PRO-008 — only a server update can unblock first-run setup.
+            FirstRunCreateResult.Failed(SERVER_TOO_OLD_MESSAGE)
+        } else {
+            FirstRunCreateResult.ProfilesAppeared(profiles)
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        FirstRunCreateResult.Failed(OFFLINE_MESSAGE)
+    }
+
+    companion object {
+        const val OFFLINE_MESSAGE =
+            "Can't reach the trip server — check the connection and try again."
+        const val SERVER_TOO_OLD_MESSAGE =
+            "The trip server refused first-run setup — it may be running an older version. " +
+                "Update the server, then try again."
+        const val CREATE_FAILED_MESSAGE = "Could not create the profile"
+    }
+}
+
+/** Outcome of the wizard's create attempt (AND-007, AND-009). */
+sealed class FirstRunCreateResult {
+    /** Created and signed in — leave the picker for the app proper. */
+    data class SignedIn(val profile: Profile) : FirstRunCreateResult()
+
+    /**
+     * The bootstrap was closed but profiles exist now: show the select-only grid with
+     * this fresh list. Nothing is auto-selected — the person holding the device picks
+     * who they are (AND-009).
+     */
+    data class ProfilesAppeared(val profiles: List<Profile>) : FirstRunCreateResult()
+
+    /** Human-readable, retryable failure — never a raw 401 envelope (AND-009). */
+    data class Failed(val message: String) : FirstRunCreateResult()
 }
 
 /** What the launch picker shows (AND-001/007/008). */
