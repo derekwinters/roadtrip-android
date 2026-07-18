@@ -11,6 +11,7 @@ import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.RoadtripJson
 import com.roadtrip.core.common.UuidIdGenerator
 import com.roadtrip.core.storage.SelectedProfileStore
+import com.roadtrip.core.storage.TrackerConfigStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,21 +24,23 @@ private val Context.roadtripDataStore by preferencesDataStore(name = "roadtrip_s
 
 /**
  * DataStore-backed device settings: server base URL, the selected profile (AND-002:
- * persists across restarts), the tracker toggle, and a stable device id for sync batches.
+ * persists across restarts), the tracker config (which parent enabled it, ANDLOC-003/008),
+ * and a stable device id for sync batches.
  *
  * Values are loaded once at startup (tiny file) and mirrored in StateFlows so the
- * synchronous core ports ([SelectedProfileStore]) and Compose UI read without blocking;
- * writes persist asynchronously on [scope].
+ * synchronous core ports ([SelectedProfileStore], [TrackerConfigStore]) and Compose UI
+ * read without blocking; writes persist asynchronously on [scope].
  */
 class AppSettings(
     private val context: Context,
     private val scope: CoroutineScope,
-) : SelectedProfileStore {
+) : SelectedProfileStore, TrackerConfigStore {
 
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
         val SELECTED_PROFILE = stringPreferencesKey("selected_profile_json")
         val TRACKER_ENABLED = booleanPreferencesKey("tracker_enabled")
+        val TRACKER_ENABLED_BY = stringPreferencesKey("tracker_enabled_by")
         val DEVICE_ID = stringPreferencesKey("device_id")
     }
 
@@ -60,6 +63,10 @@ class AppSettings(
     private val _trackerEnabled = MutableStateFlow(initial[Keys.TRACKER_ENABLED] ?: false)
     val trackerEnabled: StateFlow<Boolean> = _trackerEnabled.asStateFlow()
 
+    /** Profile id of the parent who enabled the tracker on this device (ANDLOC-003/008). */
+    private val _trackerEnabledBy = MutableStateFlow(initial[Keys.TRACKER_ENABLED_BY])
+    val trackerEnabledBy: StateFlow<String?> = _trackerEnabledBy.asStateFlow()
+
     /** Stable per-install id sent as device_id in sync batches. */
     val deviceId: String = initial[Keys.DEVICE_ID] ?: UuidIdGenerator.newId().also { id ->
         persist { it[Keys.DEVICE_ID] = id }
@@ -72,9 +79,25 @@ class AppSettings(
         persist { it[Keys.SERVER_URL] = cleaned }
     }
 
-    fun setTrackerEnabled(enabled: Boolean) {
-        _trackerEnabled.value = enabled
-        persist { it[Keys.TRACKER_ENABLED] = enabled }
+    // ---- TrackerConfigStore --------------------------------------------------------------
+
+    override fun enabledBy(): String? = _trackerEnabledBy.value
+
+    /**
+     * Non-null enables the tracker recording the enabling parent; null disables and
+     * clears the record (ANDLOC-003/008).
+     */
+    override fun setEnabledBy(profileId: String?) {
+        _trackerEnabledBy.value = profileId
+        _trackerEnabled.value = profileId != null
+        persist { prefs ->
+            prefs[Keys.TRACKER_ENABLED] = profileId != null
+            if (profileId == null) {
+                prefs.remove(Keys.TRACKER_ENABLED_BY)
+            } else {
+                prefs[Keys.TRACKER_ENABLED_BY] = profileId
+            }
+        }
     }
 
     // ---- SelectedProfileStore ----------------------------------------------------------

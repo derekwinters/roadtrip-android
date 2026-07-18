@@ -40,6 +40,7 @@ class RoomOutboxStore(private val dao: OutboxDao) : OutboxStore {
         payload = payload.toString(),
         quarantined = false,
         reason = null,
+        actorProfileId = actorProfileId,
     )
 
     private fun OutboxEventRow.toEntry() = OutboxEntry(
@@ -47,6 +48,7 @@ class RoomOutboxStore(private val dao: OutboxDao) : OutboxStore {
         type = type,
         clientTs = Instant.parse(clientTs),
         payload = RoadtripJson.parseToJsonElement(payload) as JsonObject,
+        actorProfileId = actorProfileId,
     )
 }
 

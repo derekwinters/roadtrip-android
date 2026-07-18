@@ -28,5 +28,6 @@ Spec-driven + test-driven, via the `roadtrip-dev` agent workflow in
 - Conventional Commits (release-please manages versioning; `versionName` comes from
   `version.txt`, `versionCode` is derived from it).
 - One APK serves phone and tablet — layouts adapt via `WindowSizeClass`.
-- Location tracking runs **only** when the signed-in profile is a parent on a phone.
+- Location tracking is enabled **only by parent profiles** (any device class); pings are
+  attributed to the enabling parent, and the tracker never runs between trips.
 - Requirement areas: AND (app-wide), ANDSYNC, ANDLOC, ANDMAP, ANDJRNL, ANDGAME, ANDNOTIF, ANDSET, ANDTRIP (planned).

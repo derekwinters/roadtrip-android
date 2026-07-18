@@ -23,6 +23,11 @@ data class FlushResult(
  * (contract maxItems). Entries are removed only on `accepted`/`duplicate`; network failure
  * keeps them queued; `rejected` entries are quarantined with their reason
  * (ANDSYNC-002/003/004).
+ *
+ * Batches are additionally grouped by actor identity: consecutive runs of entries sharing
+ * an `actorProfileId` upload as their own batch under that profile's `X-Profile-Id`, so
+ * location pings flush under the enabling parent while everything else stays under the
+ * signed-in profile — without breaking the global client_ts order (ANDLOC-008).
  */
 class SyncEngine(
     private val api: RoadtripApi,
@@ -40,13 +45,13 @@ class SyncEngine(
         var rejected = 0
 
         val ordered = store.pending().sortedWith(compareBy({ it.clientTs }, { it.eventId }))
-        for (chunk in ordered.chunked(chunkSize)) {
+        for (chunk in ordered.groupConsecutiveByActor().flatMap { it.chunked(chunkSize) }) {
             val request = SyncBatchRequest(
                 deviceId = deviceId,
                 events = chunk.map { it.toClientEvent() },
             )
             val result = try {
-                api.syncBatch(request)
+                api.syncBatch(request, actorProfileId = chunk.first().actorProfileId)
             } catch (e: IOException) {
                 // Unreachable server OR a lost response after processing: either way the
                 // entries stay queued; event_id idempotency makes the retry safe.
@@ -81,6 +86,20 @@ class SyncEngine(
         clientTs = Timestamps.format(clientTs),
         payload = payload,
     )
+
+    /** Splits the ordered entries into consecutive runs of equal actorProfileId (ANDLOC-008). */
+    private fun List<OutboxEntry>.groupConsecutiveByActor(): List<List<OutboxEntry>> {
+        val groups = mutableListOf<MutableList<OutboxEntry>>()
+        for (entry in this) {
+            val last = groups.lastOrNull()
+            if (last != null && last.first().actorProfileId == entry.actorProfileId) {
+                last += entry
+            } else {
+                groups += mutableListOf(entry)
+            }
+        }
+        return groups
+    }
 
     companion object {
         const val MAX_BATCH = 500

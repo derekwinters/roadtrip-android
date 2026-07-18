@@ -26,6 +26,8 @@ data class OutboxEventRow(
     /** Quarantined rows are out of the retry loop but retained with their reason (ANDSYNC-004). */
     val quarantined: Boolean,
     val reason: String?,
+    /** Attribution override: pings upload under the enabling parent's id (ANDLOC-008). */
+    val actorProfileId: String?,
 )
 
 @Entity(tableName = "cursors")
@@ -80,7 +82,7 @@ interface CacheDao {
 
 @Database(
     entities = [OutboxEventRow::class, CursorRow::class, CacheRow::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class RoadtripDatabase : RoomDatabase() {

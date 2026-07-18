@@ -77,6 +77,27 @@ class RoomStoresTest {
     }
 
     @Test
+    fun outboxPersistsTheEnablingParentAttributionOverride() {
+        // covers: ANDLOC-008 — the actor override survives the Room round trip.
+        val store = RoomOutboxStore(db.outboxDao())
+        val ping = OutboxEntry(
+            eventId = "ping-1",
+            type = OutboxEntry.TYPE_LOCATION_PING,
+            clientTs = Instant.parse("2026-07-18T12:00:00Z"),
+            payload = buildJsonObject {
+                put("lat", 39.7392)
+                put("lon", -104.9903)
+            },
+            actorProfileId = "p-parent",
+        )
+
+        store.add(ping)
+
+        assertEquals(ping, store.pending().single())
+        assertEquals("p-parent", store.pending().single().actorProfileId)
+    }
+
+    @Test
     fun outboxQuarantineRetainsReasonAndLeavesRetryLoop() {
         val store = RoomOutboxStore(db.outboxDao())
         store.add(entry("event-1", "2026-07-18T12:00:00Z", "bad"))

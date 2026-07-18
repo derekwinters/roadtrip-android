@@ -84,6 +84,40 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `groups batches by actor identity so pings flush under the enabling parent ANDLOC-008`() = runTest {
+        // Kid journal post, two parent-attributed pings, another kid post — in ts order.
+        store.add(entry("e-1", 100))
+        store.add(ping("ping-1", 200, actor = TestData.parent.id))
+        store.add(ping("ping-2", 300, actor = TestData.parent.id))
+        store.add(entry("e-2", 400))
+
+        val result = SyncEngine(api, store).flush()
+
+        assertEquals(4, result.accepted)
+        // Entries with different actors never share a batch...
+        assertEquals(listOf(1, 2, 1), api.syncBatches.map { it.events.size })
+        assertEquals(listOf(null, TestData.parent.id, null), api.syncBatchActors)
+        // ...while client_ts order is preserved across the actor-grouped batches.
+        assertEquals(
+            listOf("e-1", "ping-1", "ping-2", "e-2"),
+            api.syncBatches.flatMap { batch -> batch.events.map { it.eventId } },
+        )
+        assertTrue(store.pending().isEmpty())
+    }
+
+    private fun ping(id: String, atSeconds: Long, actor: String?): OutboxEntry =
+        OutboxEntry(
+            eventId = id,
+            type = OutboxEntry.TYPE_LOCATION_PING,
+            clientTs = TestData.t(atSeconds),
+            payload = buildJsonObject {
+                put("lat", 39.0)
+                put("lon", -105.0)
+            },
+            actorProfileId = actor,
+        )
+
+    @Test
     fun `quarantines rejected events with their reason and never retries them ANDSYNC-004`() = runTest {
         store.add(entry("e-good", 100))
         store.add(entry("e-bad", 200))

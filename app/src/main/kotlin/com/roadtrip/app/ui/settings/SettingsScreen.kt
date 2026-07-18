@@ -35,8 +35,9 @@ import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.location.TrackerService
 import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.app.ui.common.SectionHeader
+import com.roadtrip.app.ui.trips.EndTripDialog
+import com.roadtrip.app.ui.trips.StartTripDialog
 import com.roadtrip.core.api.Profile
-import com.roadtrip.core.common.DeviceClass
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.location.EnableResult
 import com.roadtrip.core.location.PermissionRequester
@@ -44,25 +45,29 @@ import com.roadtrip.core.location.TrackerEnabler
 import com.roadtrip.core.location.TrackerGate
 import com.roadtrip.core.location.TrackerGateResult
 import com.roadtrip.core.profiles.FeatureVisibilityRules
+import com.roadtrip.core.trips.TripPhase
+import com.roadtrip.core.trips.TripStateReducer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 
 /**
- * Settings (docs/spec/07-settings.md). Parents: server address, the phone tracker toggle
- * (gated by the core TrackerGate so kids/tablets never reach the permission flow,
- * ANDLOC-003/005), detection tuning via the core ConfigForm (ANDSET-001/002), and profile
- * administration (ANDSET-005). Kids see only the server address and app version.
+ * Settings (docs/spec/07-settings.md). Parents: server address, the trip tracker toggle
+ * (parent profiles on any device class; the core TrackerGate keeps kids away from the
+ * permission flow, ANDLOC-003/005, and records the enabling parent, ANDLOC-008), the road
+ * trip start/end actions (ANDTRIP-001/004), detection tuning via the core ConfigForm
+ * (ANDSET-001/002), and profile administration (ANDSET-005). Kids see only the server
+ * address and app version.
  */
 @Composable
 fun SettingsScreen(
     container: AppContainer,
     profile: Profile,
-    deviceClass: DeviceClass,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val visibility = FeatureVisibilityRules.forRole(profile.role)
     val online by container.onlineMonitor.online.collectAsState()
+    val tick by container.refreshTick.collectAsState()
 
     Column(
         modifier = Modifier
@@ -97,10 +102,83 @@ fun SettingsScreen(
         )
         Text("App version: ${appVersion(context)}", style = MaterialTheme.typography.labelMedium)
 
-        // ---- tracker toggle: parent profiles on phone-class devices only ------------------
-        if (visibility.trackerToggle && TrackerGate.evaluate(profile.role, deviceClass) is TrackerGateResult.Available) {
+        // ---- road trip lifecycle: parent-only, online-only, confirmed (ANDTRIP-001/004) ----
+        if (profile.role == Role.PARENT) {
+            SectionHeader("Road trip")
+            val tripHome = remember(tick, online) {
+                TripStateReducer.reduce(
+                    container.tripsCache.read()?.value.orEmpty(),
+                    profile.role,
+                    online,
+                )
+            }
+            var showStartDialog by remember { mutableStateOf(false) }
+            var showEndDialog by remember { mutableStateOf(false) }
+            val tripError by container.tripActionError.collectAsState()
+
+            when (val phase = tripHome.phase) {
+                is TripPhase.Active -> Text(
+                    "On the road: ${phase.trip.name}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                is TripPhase.BetweenTrips -> Text(
+                    "No active road trip — last trip: ${phase.lastTrip.name}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TripPhase.FirstLaunch -> Text(
+                    "No road trip yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            if (tripHome.startAction.visible) {
+                TextButton(
+                    onClick = { showStartDialog = true },
+                    enabled = tripHome.startAction.enabled,
+                ) {
+                    Text("Road trip starts now")
+                }
+            }
+            if (tripHome.endAction.visible) {
+                TextButton(
+                    onClick = { showEndDialog = true },
+                    enabled = tripHome.endAction.enabled,
+                ) {
+                    Text("End road trip")
+                }
+            }
+            val disabledReason = tripHome.startAction.disabledReason ?: tripHome.endAction.disabledReason
+            if (disabledReason != null) {
+                Text(disabledReason, style = MaterialTheme.typography.labelSmall)
+            }
+            tripError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+            if (showStartDialog) {
+                StartTripDialog(
+                    onConfirm = { name ->
+                        showStartDialog = false
+                        container.startTrip(name)
+                    },
+                    onDismiss = { showStartDialog = false },
+                )
+            }
+            val activeTrip = (tripHome.phase as? TripPhase.Active)?.trip
+            if (showEndDialog && activeTrip != null) {
+                EndTripDialog(
+                    tripName = activeTrip.name,
+                    onConfirm = {
+                        showEndDialog = false
+                        container.endTrip(activeTrip.id)
+                    },
+                    onDismiss = { showEndDialog = false },
+                )
+            }
+        }
+
+        // ---- tracker toggle: parent profiles on any device class (ANDLOC-003) --------------
+        if (visibility.trackerToggle && TrackerGate.evaluate(profile.role) is TrackerGateResult.Available) {
             SectionHeader("Location tracking")
             val trackerEnabled by container.settings.trackerEnabled.collectAsState()
+            val trackerEnabledBy by container.settings.trackerEnabledBy.collectAsState()
             val gpsWarning by container.trackerGpsWarning.collectAsState()
             var enableError by remember { mutableStateOf<String?>(null) }
 
@@ -128,34 +206,44 @@ fun SettingsScreen(
                     checked = trackerEnabled,
                     onCheckedChange = { wanted ->
                         if (!wanted) {
-                            container.settings.setTrackerEnabled(false)
+                            // Disabling clears the enabling-parent record (ANDLOC-003/008).
+                            container.settings.setEnabledBy(null)
                             TrackerService.stop(context)
                         } else {
                             enableError = null
                             scope.launch {
-                                val enabler = TrackerEnabler(permissionRequester)
-                                when (val result = enabler.requestEnable(profile.role, deviceClass)) {
-                                    EnableResult.Enabled -> {
-                                        container.settings.setTrackerEnabled(true)
-                                        TrackerService.start(context)
-                                    }
+                                // The enabler records this parent as the ping actor
+                                // (ANDLOC-003/008) before the service starts.
+                                val enabler = TrackerEnabler(permissionRequester, container.settings)
+                                when (val result = enabler.requestEnable(profile)) {
+                                    EnableResult.Enabled -> TrackerService.start(context)
                                     EnableResult.PermissionDenied ->
                                         enableError = "Location permission is needed to track the trip."
                                     is EnableResult.NotAvailable ->
-                                        enableError = "Tracking is only for parents on a phone (${result.reason})."
+                                        enableError = "Tracking is only for parent profiles (${result.reason})."
                                 }
                             }
                         }
                     },
                 )
                 Spacer(Modifier.width(12.dp))
-                Text("This phone is the trip tracker")
+                Text("This device is the trip tracker")
             }
             Text(
                 "Reports the family position every few minutes while driving; " +
-                    "a persistent notification shows while tracking is active.",
+                    "a persistent notification shows while tracking is active. " +
+                    "The tracker pauses automatically between road trips.",
                 style = MaterialTheme.typography.labelSmall,
             )
+            val enablerId = trackerEnabledBy
+            if (trackerEnabled && enablerId != null) {
+                val enablerName = container.profilesCache.read()?.value
+                    ?.firstOrNull { it.id == enablerId }?.name ?: enablerId
+                Text(
+                    "Pings are reported as $enablerName (who enabled the tracker).",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
             enableError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (gpsWarning) {
                 Text(

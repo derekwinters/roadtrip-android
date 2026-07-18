@@ -34,7 +34,10 @@ enum class Role {
     @SerialName("kid") KID,
 }
 
-/** Device form factor; location tracking is parent-phone only (ANDLOC-003/005). */
+/**
+ * Device form factor. Layout adaptation keys off WindowSizeClass (AND-004); since the
+ * tracker rework the tracker is available on every device class (ANDLOC-003).
+ */
 enum class DeviceClass { PHONE, TABLET }
 
 /** ISO-8601 helpers for the wire format (`date-time` strings in the contract). */

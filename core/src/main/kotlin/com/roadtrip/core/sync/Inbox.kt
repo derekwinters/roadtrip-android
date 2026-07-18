@@ -104,6 +104,20 @@ class JournalCacheApplier(
                 text = "Arrived at ${str("destination_name") ?: "the destination"}",
                 link = DeepLink(DeepLinkKind.LEG_SUMMARY, destinationId = str("destination_id")),
             )
+            "trip.started" -> JournalEntry(
+                seq = event.seq,
+                kind = JournalKind.TRIP_STARTED,
+                ts = event.clientTs,
+                text = "Road trip${str("name")?.let { " \"$it\"" }.orEmpty()} started!",
+                link = DeepLink(DeepLinkKind.TRIP_SUMMARY, tripId = str("trip_id")),
+            )
+            "trip.ended" -> JournalEntry(
+                seq = event.seq,
+                kind = JournalKind.TRIP_ENDED,
+                ts = event.clientTs,
+                text = "Road trip${str("name")?.let { " \"$it\"" }.orEmpty()} complete!",
+                link = DeepLink(DeepLinkKind.TRIP_SUMMARY, tripId = str("trip_id")),
+            )
             "game.finished" -> JournalEntry(
                 seq = event.seq,
                 kind = JournalKind.GAME_RESULT,

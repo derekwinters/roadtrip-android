@@ -65,6 +65,19 @@ class TrackerControllerTest {
     }
 
     @Test
+    fun `pings are attributed to the enabling parent regardless of the signed-in profile ANDLOC-008`() {
+        // The device may be signed in as anyone (even a kid); the controller stamps the
+        // parent who enabled the tracker onto every ping outbox entry.
+        val attributed = TrackerController(queue, enabledBy = { TestData.parent.id })
+        attributed.onSample(39.0, -105.0, 5.0, TestData.t(0))
+        assertEquals(TestData.parent.id, store.pending().single().actorProfileId)
+
+        // Without a recorded enabler (legacy install) there is no override.
+        controller.onSample(39.1, -105.1, 5.0, TestData.t(300))
+        assertEquals(null, store.pending().last().actorProfileId)
+    }
+
+    @Test
     fun `three consecutive sample failures raise a quiet warning ANDLOC-007`() {
         controller.onSampleFailure()
         controller.onSampleFailure()

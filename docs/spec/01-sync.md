@@ -5,11 +5,14 @@ Implements the client side of backend spec `09-sync-notifications.md`.
 ## Design
 
 - **Outbox**: every locally-created event (`journal.post` from anyone, `location.ping` from
-  the parent phone) is written to a Room `outbox` table with a client-generated UUID
-  `event_id` and `client_ts` at creation time, regardless of connectivity.
+  parent-enabled tracker devices) is written to a Room `outbox` table with a client-generated
+  UUID `event_id` and `client_ts` at creation time, regardless of connectivity. Entries may
+  carry an `actor_profile_id` attribution override (ANDLOC-008).
 - **Flush**: a sync pass sends outbox rows in `client_ts` order via `POST /api/sync/batch`
   (chunks ≤ 500), removing rows on `accepted`/`duplicate` and quarantining rows on
-  `rejected` (never retried, surfaced in a debug screen).
+  `rejected` (never retried, surfaced in a debug screen). Consecutive runs of rows sharing
+  an actor override upload as their own batch under that profile's `X-Profile-Id`
+  (ANDLOC-008).
 - **Inbox**: the client stores the last seen event `seq` and pulls
   `GET /api/events?after=<cursor>` to update local caches (journal, map, games, checklist,
   notifications). Foreground: long-poll loop. Background: periodic WorkManager sync.

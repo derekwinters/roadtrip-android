@@ -120,6 +120,89 @@ class HttpRoadtripApiTest {
     }
 
     @Test
+    fun `trip lifecycle endpoints follow the backend contract ANDTRIP-001`() = runTest {
+        enqueueJson(
+            """[{"id":"t-1","name":"Summer Loop","status":"ended",
+               "started_at":"2026-06-01T12:00:00Z","ended_at":"2026-06-20T12:00:00Z"}]""",
+        )
+        enqueueJson(
+            """{"id":"t-2","name":"Fall Colors","status":"active","started_at":"2026-07-18T12:00:00Z"}""",
+            code = 201,
+        )
+        enqueueJson(
+            """{"id":"t-2","name":"Fall Colors","status":"ended",
+               "started_at":"2026-07-18T12:00:00Z","ended_at":"2026-07-19T12:00:00Z"}""",
+        )
+        enqueueJson(
+            """{"id":"t-2","name":"Renamed","status":"ended",
+               "started_at":"2026-07-18T12:00:00Z","ended_at":"2026-07-19T12:00:00Z"}""",
+        )
+
+        val api = api()
+        val trips = api.getTrips()
+        assertEquals(TripStatus.ENDED, trips.single().status)
+        assertEquals("2026-06-20T12:00:00Z", trips.single().endedAt)
+        assertEquals(TripStatus.ACTIVE, api.createTrip("Fall Colors").status)
+        assertEquals(TripStatus.ENDED, api.endTrip("t-2").status)
+        assertEquals("Renamed", api.renameTrip("t-2", "Renamed").name)
+
+        assertEquals("/api/trips", server.takeRequest().path)
+        val create = server.takeRequest()
+        assertEquals("POST", create.method)
+        assertEquals("/api/trips", create.path)
+        assertEquals("""{"name":"Fall Colors"}""", create.body.readUtf8())
+        val end = server.takeRequest()
+        assertEquals("POST", end.method)
+        assertEquals("/api/trips/t-2/end", end.path)
+        val rename = server.takeRequest()
+        assertEquals("PATCH", rename.method)
+        assertEquals("/api/trips/t-2", rename.path)
+        assertEquals("""{"name":"Renamed"}""", rename.body.readUtf8())
+    }
+
+    @Test
+    fun `scoped readers pass the trip query parameter and the per-trip summary path ANDTRIP-003`() = runTest {
+        enqueueJson("""{"entries":[],"next_before":null}""")
+        enqueueJson("""{"states":[],"cities":[],"stops":[]}""")
+        enqueueJson("""[]""")
+        enqueueJson("""{"breadcrumb":[]}""")
+        enqueueJson(
+            """{"miles":1204.5,"wall_minutes":100,"moving_minutes":80,
+               "states_count":5,"stop_count":3,"games_played":2}""",
+        )
+
+        val api = api()
+        api.getJournal(limit = 20, trip = "t-1")
+        api.getChecklist(trip = "t-1")
+        api.getLegs(trip = "t-1")
+        api.getMap(maxPoints = 100, trip = "t-1")
+        assertEquals(1204.5, api.getTripSummary("t-1").miles)
+
+        assertEquals("/api/journal?limit=20&trip=t-1", server.takeRequest().path)
+        assertEquals("/api/checklist?trip=t-1", server.takeRequest().path)
+        assertEquals("/api/legs?trip=t-1", server.takeRequest().path)
+        assertEquals("/api/map?max_points=100&trip=t-1", server.takeRequest().path)
+        assertEquals("/api/trips/t-1/summary", server.takeRequest().path)
+    }
+
+    @Test
+    fun `sync batches with an actor override send that X-Profile-Id ANDLOC-008`() = runTest {
+        enqueueJson("""{"results":[]}""")
+        enqueueJson("""{"results":[]}""")
+
+        val api = api()
+        api.syncBatch(
+            SyncBatchRequest(deviceId = "tablet-1", events = emptyList()),
+            actorProfileId = "p-parent",
+        )
+        api.syncBatch(SyncBatchRequest(deviceId = "tablet-1", events = emptyList()))
+
+        // The enabling parent's id overrides the signed-in profile for that batch only.
+        assertEquals("p-parent", server.takeRequest().getHeader("X-Profile-Id"))
+        assertEquals("profile-123", server.takeRequest().getHeader("X-Profile-Id"))
+    }
+
+    @Test
     fun `maps non-2xx responses to ApiException with the contract error shape`() = runTest {
         enqueueJson("""{"error":{"code":"out_of_bounds","message":"ping_interval_s must be >= 5"}}""", code = 400)
 

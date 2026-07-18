@@ -27,6 +27,10 @@ sealed class JournalDisplay {
     data class GameResult(val text: String, val gameId: String?) : JournalDisplay()
 
     data class LegArrival(val text: String, val destinationId: String?) : JournalDisplay()
+
+    data class TripStarted(val text: String, val tripId: String?) : JournalDisplay()
+
+    data class TripEnded(val text: String, val tripId: String?) : JournalDisplay()
 }
 
 data class JournalFeedItem(
@@ -86,6 +90,8 @@ object JournalFeedReducer {
         JournalKind.STOP -> JournalDisplay.Stop(entry.text, entry.link)
         JournalKind.GAME_RESULT -> JournalDisplay.GameResult(entry.text, entry.link?.gameId)
         JournalKind.LEG_ARRIVAL -> JournalDisplay.LegArrival(entry.text, entry.link?.destinationId)
+        JournalKind.TRIP_STARTED -> JournalDisplay.TripStarted(entry.text, entry.link?.tripId)
+        JournalKind.TRIP_ENDED -> JournalDisplay.TripEnded(entry.text, entry.link?.tripId)
     }
 }
 
