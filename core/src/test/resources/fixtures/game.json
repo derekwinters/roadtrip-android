@@ -1,0 +1,19 @@
+{
+  "id": "5b7c9d10-2222-4a1b-8c3d-000000000042",
+  "game_type": "ultimate",
+  "mode": "challenge",
+  "status": "active",
+  "created_by": "6f1e7a9c-1111-4f7e-9a44-000000000001",
+  "invited_profile_id": "6f1e7a9c-1111-4f7e-9a44-000000000002",
+  "opponent_id": "6f1e7a9c-1111-4f7e-9a44-000000000002",
+  "move_count": 7,
+  "result": null,
+  "winner_id": null,
+  "turn": "6f1e7a9c-1111-4f7e-9a44-000000000002",
+  "view": {
+    "boards": [[null, "X", null, null, null, null, null, null, null]],
+    "next_board": 1
+  },
+  "created_at": "2026-07-18T12:00:00Z",
+  "finished_at": null
+}

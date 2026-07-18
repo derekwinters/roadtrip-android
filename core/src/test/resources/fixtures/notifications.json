@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "seq": 55,
+      "kind": "challenge_received",
+      "text": "Derek challenged you to chess",
+      "game_id": "5b7c9d10-2222-4a1b-8c3d-000000000042",
+      "link": { "kind": "game_replay", "game_id": "5b7c9d10-2222-4a1b-8c3d-000000000042" }
+    },
+    {
+      "seq": 56,
+      "kind": "journal_activity",
+      "text": "Maya posted to the journal"
+    }
+  ],
+  "next_after": 56
+}
