@@ -26,6 +26,27 @@ trips remain browsable read-only. **Starting/ending/renaming a trip is parent-on
 - `trip.started` / `trip.ended` are journal-worthy (TRIP-009): they render as distinct
   journal entry kinds and deep-link to the trip summary via the new `trip_summary` deep
   link kind (`{trip_id}`).
+- **Itinerary planner** (backend planner contract, issue #60): parents can plan **one**
+  "next trip" ahead of time — `POST /api/trips {status:"planned", name?, planned_start_at?}`
+  (the server answers a second planned trip with 409 `conflict`), rename/re-date it with
+  `PATCH /api/trips/{id} {name?, planned_start_at?}`, and delete it (`DELETE`, planned
+  only). `planned_start_at` is an **approximate** start entered as free text and displayed
+  verbatim ("~ early August") — the client never parses it. Planned trips have no
+  `started_at` yet; `GET /api/trips` lists them alongside active/ended ones.
+- The **planned-trip card** (name, ~start, staged itinerary preview) renders wherever the
+  "No active road trip" banner rules apply: between trips and on the first-launch welcome.
+  Kids see the card **read-only**; all planner actions (plan/rename/delete/start) are
+  parent-only and online-only like the rest of the trip lifecycle. The card's
+  **"Road trip starts now"** button activates the plan via `POST /api/trips/{id}/start`
+  (confirm dialog; 409 `conflict` while another trip is active).
+- **Staging**: destination writes and the destination list accept `?trip=<plannedId>`, so
+  parents stage the planned trip's itinerary from the map screen exactly like during a
+  trip (parent-only, online-only). The staged list previews on the planned-trip card and
+  in the map destination panel while no trip is active. Activation **adopts** the staged
+  itinerary server-side — the client just calls `/start`, re-pulls trips, and its
+  trip-scoped caches switch to the new active trip (fresh keys, ANDTRIP-002).
+- Planned trips never appear in the trip **history** browser's past-trip list (they have
+  no history); the card is their home until they start or are deleted.
 
 ## Requirements
 
@@ -36,3 +57,6 @@ trips remain browsable read-only. **Starting/ending/renaming a trip is parent-on
 | ANDTRIP-003 | A trip history browser lists past trips and opens read-only journal, checklist, and summary views for each. | auto |
 | ANDTRIP-004 | Start/end are online-only actions with a confirm dialog (the server arbitrates the single active trip); offline, the actions are disabled with an explanation, consistent with AND-005. | auto |
 | ANDTRIP-005 | Trip start/end flows verified end-to-end during the pre-trip dry run. | manual |
+| ANDTRIP-006 | Parents can create, rename, and delete exactly **one** planned "next trip" (server 409s a second plan) with an optional approximate free-text start; the no-active-trip screen and the first-launch welcome show the planned-trip card (name, ~start, itinerary preview) with a **"Road trip starts now"** action that activates it; kids see the card read-only with no planner actions. | auto |
+| ANDTRIP-007 | Destinations can be staged against the planned trip from the map screen exactly like during a trip — destination writes/list pass `?trip=<plannedId>`; staging is parent-only and online-only; the staged list shows on the planned-trip card and in the map destination panel while viewing the planned trip. | auto |
+| ANDTRIP-008 | Activating the planned trip adopts the staged itinerary: the client calls `POST /api/trips/{id}/start` (409 while another trip is active), re-syncs, and the app switches to the new active trip — the trip-scoped caches land under the new trip's keys and the staged destinations become the active list. | auto |

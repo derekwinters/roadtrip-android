@@ -62,26 +62,36 @@ class HttpRoadtripApi(
         request("PUT", url("api/config"), body(ConfigPatch.serializer(), patch), Config.serializer())
 
     // ---- destinations ----------------------------------------------------------------
+    // The optional ?trip=<plannedId> stages writes against the planned trip (ANDTRIP-007).
 
-    override suspend fun getDestinations(): List<Destination> =
-        get("api/destinations", ListSerializer(Destination.serializer()))
+    override suspend fun getDestinations(trip: String?): List<Destination> {
+        val url = url("api/destinations") { if (trip != null) addQueryParameter("trip", trip) }
+        return request("GET", url, null, ListSerializer(Destination.serializer()))
+    }
 
-    override suspend fun createDestination(create: DestinationCreate): Destination =
+    override suspend fun createDestination(create: DestinationCreate, trip: String?): Destination =
         request(
-            "POST", url("api/destinations"),
+            "POST", url("api/destinations") { if (trip != null) addQueryParameter("trip", trip) },
             body(DestinationCreate.serializer(), create),
             Destination.serializer(),
         )
 
-    override suspend fun updateDestination(id: String, patch: DestinationPatch): Destination =
+    override suspend fun updateDestination(id: String, patch: DestinationPatch, trip: String?): Destination =
         request(
-            "PATCH", url("api/destinations/$id"),
+            "PATCH", url("api/destinations/$id") { if (trip != null) addQueryParameter("trip", trip) },
             body(DestinationPatch.serializer(), patch),
             Destination.serializer(),
         )
 
-    override suspend fun deleteDestination(id: String) {
-        requestNoContent("DELETE", url("api/destinations/$id"))
+    override suspend fun deleteDestination(id: String, trip: String?) {
+        requestNoContent("DELETE", url("api/destinations/$id") { if (trip != null) addQueryParameter("trip", trip) })
+    }
+
+    // ---- geocode -----------------------------------------------------------------------
+
+    override suspend fun geocode(q: String): List<GeocodeMatch> {
+        val url = url("api/geocode") { addQueryParameter("q", q) }
+        return request("GET", url, null, GeocodeResponse.serializer()).results
     }
 
     // ---- sync ------------------------------------------------------------------------
@@ -174,15 +184,39 @@ class HttpRoadtripApi(
     override suspend fun endTrip(id: String): Trip =
         request("POST", url("api/trips/$id/end"), emptyBody(), Trip.serializer())
 
-    override suspend fun renameTrip(id: String, name: String): Trip =
+    override suspend fun createPlannedTrip(name: String?, plannedStartAt: String?): Trip =
         request(
-            "PATCH", url("api/trips/$id"),
-            body(TripRenameRequest.serializer(), TripRenameRequest(name)),
+            "POST", url("api/trips"),
+            body(
+                TripCreateRequest.serializer(),
+                TripCreateRequest(name = name, status = "planned", plannedStartAt = plannedStartAt),
+            ),
             Trip.serializer(),
         )
 
+    override suspend fun startTrip(id: String): Trip =
+        request("POST", url("api/trips/$id/start"), emptyBody(), Trip.serializer())
+
+    override suspend fun patchTrip(id: String, name: String?, plannedStartAt: String?): Trip =
+        request(
+            "PATCH", url("api/trips/$id"),
+            body(TripPatchRequest.serializer(), TripPatchRequest(name = name, plannedStartAt = plannedStartAt)),
+            Trip.serializer(),
+        )
+
+    override suspend fun deleteTrip(id: String) {
+        requestNoContent("DELETE", url("api/trips/$id"))
+    }
+
     override suspend fun getTripSummary(tripId: String): TripSummary =
         get("api/trips/$tripId/summary", TripSummary.serializer())
+
+    // ---- bingo ---------------------------------------------------------------------------
+
+    override suspend fun getBingo(trip: String?): BingoCard {
+        val url = url("api/bingo") { if (trip != null) addQueryParameter("trip", trip) }
+        return request("GET", url, null, BingoCard.serializer())
+    }
 
     // ---- games -------------------------------------------------------------------------
 

@@ -1,8 +1,10 @@
 package com.roadtrip.core.api
 
+import com.roadtrip.core.common.Role
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.buildJsonObject
@@ -186,6 +188,97 @@ class HttpRoadtripApiTest {
     }
 
     @Test
+    fun `planner endpoints follow the planned-trip contract ANDTRIP-006`() = runTest {
+        enqueueJson(
+            """{"id":"t-9","name":"Desert Loop","status":"planned","planned_start_at":"~ early August"}""",
+            code = 201,
+        )
+        enqueueJson("""{"id":"t-9","name":"Desert Loop 2026","status":"planned","planned_start_at":"~ Aug 8"}""")
+        enqueueJson("""{"id":"t-9","name":"Desert Loop 2026","status":"active","started_at":"2026-08-08T14:00:00Z"}""")
+        enqueueJson("", code = 204)
+
+        val api = api()
+        val planned = api.createPlannedTrip("Desert Loop", "~ early August")
+        assertEquals(TripStatus.PLANNED, planned.status)
+        assertEquals("~ early August", planned.plannedStartAt)
+        assertNull(planned.startedAt) // planned trips have no started_at yet
+        api.patchTrip("t-9", name = "Desert Loop 2026", plannedStartAt = "~ Aug 8")
+        assertEquals(TripStatus.ACTIVE, api.startTrip("t-9").status)
+        api.deleteTrip("t-9")
+
+        val create = server.takeRequest()
+        assertEquals("POST", create.method)
+        assertEquals("/api/trips", create.path)
+        assertEquals(
+            """{"name":"Desert Loop","status":"planned","planned_start_at":"~ early August"}""",
+            create.body.readUtf8(),
+        )
+        val patch = server.takeRequest()
+        assertEquals("PATCH", patch.method)
+        assertEquals("/api/trips/t-9", patch.path)
+        assertEquals("""{"name":"Desert Loop 2026","planned_start_at":"~ Aug 8"}""", patch.body.readUtf8())
+        val start = server.takeRequest()
+        assertEquals("POST", start.method)
+        assertEquals("/api/trips/t-9/start", start.path)
+        val delete = server.takeRequest()
+        assertEquals("DELETE", delete.method)
+        assertEquals("/api/trips/t-9", delete.path)
+    }
+
+    @Test
+    fun `destination staging writes pass the planned trip scope ANDTRIP-007`() = runTest {
+        enqueueJson("""[]""")
+        enqueueJson(
+            """{"id":"d-1","name":"Arches NP","lat":38.73,"lon":-109.59,"order_index":0,"status":"pending"}""",
+            code = 201,
+        )
+        enqueueJson(
+            """{"id":"d-1","name":"Arches NP","lat":38.73,"lon":-109.59,"order_index":1,"status":"pending"}""",
+        )
+        enqueueJson("", code = 204)
+
+        val api = api()
+        api.getDestinations(trip = "t-9")
+        api.createDestination(DestinationCreate("Arches NP", 38.73, -109.59), trip = "t-9")
+        api.updateDestination("d-1", DestinationPatch(orderIndex = 1), trip = "t-9")
+        api.deleteDestination("d-1", trip = "t-9")
+
+        assertEquals("/api/destinations?trip=t-9", server.takeRequest().path)
+        val create = server.takeRequest()
+        assertEquals("POST", create.method)
+        assertEquals("/api/destinations?trip=t-9", create.path)
+        val patch = server.takeRequest()
+        assertEquals("PATCH", patch.method)
+        assertEquals("/api/destinations/d-1?trip=t-9", patch.path)
+        val delete = server.takeRequest()
+        assertEquals("DELETE", delete.method)
+        assertEquals("/api/destinations/d-1?trip=t-9", delete.path)
+    }
+
+    @Test
+    fun `the bingo endpoint parses cells log and counts ANDBNG-004`() = runTest {
+        enqueueJson(
+            """{"cells":[{"state_code":"CO","spotted_by":"p-kid","spotted_at":"2026-07-18T12:01:00Z"}],
+               "log":[{"state_code":"CO","action":"spotted","profile_id":"p-kid","ts":"2026-07-18T12:01:00Z"},
+                      {"state_code":"UT","action":"removed","profile_id":"p-parent","ts":"2026-07-18T12:05:00Z"}],
+               "counts":{"p-kid":1}}""",
+        )
+        enqueueJson("""{"cells":[],"log":[],"counts":{}}""")
+
+        val api = api()
+        val card = api.getBingo()
+        assertEquals("CO", card.cells.single().stateCode)
+        assertEquals("p-kid", card.cells.single().spottedBy)
+        assertEquals(BingoLogAction.SPOTTED, card.log[0].action)
+        assertEquals(BingoLogAction.REMOVED, card.log[1].action)
+        assertEquals(1, card.counts["p-kid"])
+        api.getBingo(trip = "t-1")
+
+        assertEquals("/api/bingo", server.takeRequest().path)
+        assertEquals("/api/bingo?trip=t-1", server.takeRequest().path)
+    }
+
+    @Test
     fun `sync batches with an actor override send that X-Profile-Id ANDLOC-008`() = runTest {
         enqueueJson("""{"results":[]}""")
         enqueueJson("""{"results":[]}""")
@@ -200,6 +293,49 @@ class HttpRoadtripApiTest {
         // The enabling parent's id overrides the signed-in profile for that batch only.
         assertEquals("p-parent", server.takeRequest().getHeader("X-Profile-Id"))
         assertEquals("profile-123", server.takeRequest().getHeader("X-Profile-Id"))
+    }
+
+    @Test
+    fun `bootstrap profile create sends no X-Profile-Id when nobody is signed in AND-007`() = runTest {
+        profileId = null // first run: no selected profile yet
+        enqueueJson("""{"id":"p-1","name":"Derek","avatar":"bear","role":"parent"}""", code = 201)
+
+        val created = api().createProfile("Derek", "bear", Role.PARENT)
+
+        assertEquals(Role.PARENT, created.role)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/profiles", request.path)
+        // The backend's zero-profiles bootstrap accepts exactly this header-less parent create.
+        assertNull(request.getHeader("X-Profile-Id"))
+        assertTrue(request.body.readUtf8().contains(""""role":"parent""""))
+    }
+
+    @Test
+    fun `geocode hits the proxy with the query and parses snake_case matches ANDMAP-008`() = runTest {
+        enqueueJson(
+            """{"results":[{"display_name":"Moab, Grand County, Utah","lat":38.5733,"lon":-109.5498}]}""",
+        )
+
+        val matches = api().geocode("Moab UT")
+
+        assertEquals("/api/geocode?q=Moab%20UT", server.takeRequest().path)
+        assertEquals("Moab, Grand County, Utah", matches.single().displayName)
+        assertEquals(38.5733, matches.single().lat)
+        assertEquals(-109.5498, matches.single().lon)
+    }
+
+    @Test
+    fun `geocode 503 surfaces the geocode_unavailable error code ANDMAP-009`() = runTest {
+        enqueueJson(
+            """{"error":{"code":"geocode_unavailable","message":"upstream geocoder unreachable"}}""",
+            code = 503,
+        )
+
+        val ex = assertFailsWith<ApiException> { api().geocode("Moab") }
+
+        assertEquals(503, ex.status)
+        assertEquals("geocode_unavailable", ex.code)
     }
 
     @Test

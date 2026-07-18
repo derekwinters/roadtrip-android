@@ -3,6 +3,7 @@ package com.roadtrip.app.di
 import android.content.Context
 import androidx.room.Room
 import com.roadtrip.app.data.AppSettings
+import com.roadtrip.app.data.BingoCacheApplier
 import com.roadtrip.app.data.ChecklistCacheApplier
 import com.roadtrip.app.data.GamesCacheApplier
 import com.roadtrip.app.data.MapCacheApplier
@@ -12,6 +13,7 @@ import com.roadtrip.app.data.room.RoomCursorStore
 import com.roadtrip.app.data.room.RoomOutboxStore
 import com.roadtrip.app.notifications.AndroidNotificationPoster
 import com.roadtrip.core.api.ApiException
+import com.roadtrip.core.api.BingoCard
 import com.roadtrip.core.api.Checklist
 import com.roadtrip.core.api.Config
 import com.roadtrip.core.api.Destination
@@ -140,6 +142,11 @@ class AppContainer(private val context: Context) {
     val journalCache = tripScopedCache("journal", ListSerializer(JournalEntry.serializer()))
     val mapCache = tripScopedCache("map", MapState.serializer())
     val destinationsCache = cache("destinations", ListSerializer(Destination.serializer()))
+    /** The shared license-plate bingo card, per trip like the journal (ANDBNG-004). */
+    val bingoCache = tripScopedCache("bingo", BingoCard.serializer())
+    /** The planned trip's staged itinerary, keyed by the planned trip id (ANDTRIP-007). */
+    fun stagedDestinationsCache(tripId: String): CacheStore<List<Destination>> =
+        cache("destinations_$tripId", ListSerializer(Destination.serializer()))
     val checklistCache = tripScopedCache("checklist", Checklist.serializer())
     val configCache = cache("config", Config.serializer())
     val gamesCache = cache("games", ListSerializer(Game.serializer()))
@@ -175,6 +182,8 @@ class AppContainer(private val context: Context) {
             MapCacheApplier(mapCache, cursorStore, clock),
             ChecklistCacheApplier(checklistCache, cursorStore, clock),
             GamesCacheApplier(gamesCache, cursorStore, clock),
+            // Live plate.* events fill/clear bingo cells between refreshes (ANDBNG-004).
+            BingoCacheApplier(bingoCache, cursorStore, clock, profileLookup),
         ),
     )
 
@@ -266,6 +275,14 @@ class AppContainer(private val context: Context) {
         runCatching { gamesCache.write(api.getGames(), now) }
         runCatching { legsCache.write(api.getLegs(), now) }
         runCatching { tripSummaryCache.write(api.getTripSummary(), now) }
+        runCatching { bingoCache.write(api.getBingo(), now) }
+        // The planned trip's staged itinerary previews on its card offline (ANDTRIP-007).
+        runCatching {
+            val planned = tripsCache.read()?.value.orEmpty().firstOrNull { it.status == TripStatus.PLANNED }
+            if (planned != null) {
+                stagedDestinationsCache(planned.id).write(api.getDestinations(trip = planned.id), now)
+            }
+        }
         runCatching { mergeJournalPage(api.getJournal(limit = JOURNAL_PAGE)) }
     }
 
@@ -310,23 +327,31 @@ class AppContainer(private val context: Context) {
      */
     val destinationError = MutableStateFlow<String?>(null)
 
-    fun addDestination(name: String, lat: Double, lon: Double) = destinationMutation {
-        api.createDestination(DestinationCreate(name = name, lat = lat, lon = lon))
+    // A non-null [trip] stages the write against the planned trip (?trip=<plannedId>,
+    // ANDTRIP-007) — same parent-only online-only rules, different itinerary.
+    fun addDestination(name: String, lat: Double, lon: Double, trip: String? = null) = destinationMutation(trip) {
+        api.createDestination(DestinationCreate(name = name, lat = lat, lon = lon), trip)
     }
 
-    fun reorderDestination(id: String, orderIndex: Int) = destinationMutation {
-        api.updateDestination(id, DestinationPatch(orderIndex = orderIndex))
+    fun reorderDestination(id: String, orderIndex: Int, trip: String? = null) = destinationMutation(trip) {
+        api.updateDestination(id, DestinationPatch(orderIndex = orderIndex), trip)
     }
 
-    fun removeDestination(id: String) = destinationMutation {
-        api.deleteDestination(id)
+    fun removeDestination(id: String, trip: String? = null) = destinationMutation(trip) {
+        api.deleteDestination(id, trip)
     }
 
-    private fun destinationMutation(block: suspend () -> Unit) {
+    private fun destinationMutation(trip: String? = null, block: suspend () -> Unit) {
         appScope.launch {
             try {
                 block()
                 destinationError.value = null
+                // Staged writes refresh the planned trip's cached itinerary right away.
+                if (trip != null) {
+                    runCatching {
+                        stagedDestinationsCache(trip).write(api.getDestinations(trip = trip), clock.now())
+                    }
+                }
                 requestSync(SyncTrigger.POST_WRITE)
             } catch (e: ApiException) {
                 destinationError.value = e.message ?: "Destination change rejected"
@@ -352,6 +377,36 @@ class AppContainer(private val context: Context) {
         api.endTrip(tripId)
     }
 
+    // ---- itinerary planner (ANDTRIP-006/008): parent-only, online-only, server-arbitrated.
+
+    fun createPlannedTrip(name: String?, plannedStartAt: String?) = tripMutation {
+        api.createPlannedTrip(
+            name?.trim()?.takeIf { it.isNotEmpty() },
+            plannedStartAt?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    fun updatePlannedTrip(tripId: String, name: String?, plannedStartAt: String?) = tripMutation {
+        api.patchTrip(
+            tripId,
+            name?.trim()?.takeIf { it.isNotEmpty() },
+            plannedStartAt?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    fun deletePlannedTrip(tripId: String) = tripMutation {
+        api.deleteTrip(tripId)
+    }
+
+    /**
+     * "Road trip starts now" on the planned card: /start adopts the staged itinerary
+     * server-side; the re-pull in [tripMutation] switches the scoped caches to the new
+     * active trip and the follow-up sync fills them (ANDTRIP-008).
+     */
+    fun activatePlannedTrip(tripId: String) = tripMutation {
+        api.startTrip(tripId)
+    }
+
     private fun tripMutation(block: suspend () -> Unit) {
         appScope.launch {
             try {
@@ -371,6 +426,22 @@ class AppContainer(private val context: Context) {
             }
             bumpTick()
         }
+    }
+
+    /**
+     * License-plate bingo spots/removals queue offline like journal posts — any profile,
+     * attributed via the normal sync path, real tap timestamps (ANDBNG-001/002).
+     */
+    fun spotPlate(stateCode: String) {
+        outboxQueue.enqueuePlateSpotted(stateCode)
+        bumpTick()
+        requestSync(SyncTrigger.POST_WRITE)
+    }
+
+    fun unspotPlate(stateCode: String) {
+        outboxQueue.enqueuePlateUnspotted(stateCode)
+        bumpTick()
+        requestSync(SyncTrigger.POST_WRITE)
     }
 
     fun selectProfile(profile: Profile?) {

@@ -29,22 +29,31 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.core.api.Destination
 import com.roadtrip.core.api.DestinationStatus
 import com.roadtrip.core.api.Profile
+import com.roadtrip.core.api.Trip
+import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.common.Role
+import com.roadtrip.core.map.AddressSearch
+import com.roadtrip.core.map.AddressSearchState
 import com.roadtrip.core.map.MapMarker
 import com.roadtrip.core.map.MapScreenReducer
 import com.roadtrip.core.map.MapScreenState
 import com.roadtrip.core.map.MarkerKind
 import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -84,6 +93,21 @@ fun MapScreen(
         }
     }
 
+    // With no active trip, parents stage the planned trip's itinerary from this screen —
+    // same panel, writes scoped by ?trip=<plannedId> (ANDTRIP-007, online-only).
+    val stagingTrip: Trip? = remember(tick) {
+        val trips = container.tripsCache.read()?.value.orEmpty()
+        if (trips.none { it.status == TripStatus.ACTIVE }) {
+            trips.firstOrNull { it.status == TripStatus.PLANNED }
+        } else {
+            null
+        }
+    }
+    val stagedDestinations: List<Destination> = remember(tick, stagingTrip) {
+        stagingTrip?.let { container.stagedDestinationsCache(it.id).read()?.value }.orEmpty()
+    }
+    val stagingEnabled = stagingTrip == null || online
+
     var longPressPoint by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var showCoordinateDialog by remember { mutableStateOf(false) }
 
@@ -93,7 +117,8 @@ fun MapScreen(
                 state = state,
                 centerLat = centerLat,
                 centerLon = centerLon,
-                allowLongPress = isParent,
+                // Staging the planned trip is online-only (ANDTRIP-007).
+                allowLongPress = isParent && stagingEnabled,
                 onLongPress = { lat, lon -> longPressPoint = lat to lon },
             )
 
@@ -138,7 +163,9 @@ fun MapScreen(
         if (isParent) {
             DestinationPanel(
                 container = container,
-                destinations = state?.destinationList.orEmpty(),
+                destinations = if (stagingTrip != null) stagedDestinations else state?.destinationList.orEmpty(),
+                stagingTrip = stagingTrip,
+                stagingEnabled = stagingEnabled,
                 onAddByCoordinates = { showCoordinateDialog = true },
             )
         }
@@ -146,12 +173,14 @@ fun MapScreen(
 
     longPressPoint?.let { (lat, lon) ->
         AddDestinationDialog(
+            container = container,
+            role = profile.role,
             lat = lat,
             lon = lon,
             editableCoordinates = false,
             onDismiss = { longPressPoint = null },
             onConfirm = { name, dLat, dLon ->
-                container.addDestination(name, dLat, dLon)
+                container.addDestination(name, dLat, dLon, stagingTrip?.id)
                 longPressPoint = null
             },
         )
@@ -159,12 +188,14 @@ fun MapScreen(
 
     if (showCoordinateDialog) {
         AddDestinationDialog(
+            container = container,
+            role = profile.role,
             lat = null,
             lon = null,
             editableCoordinates = true,
             onDismiss = { showCoordinateDialog = false },
             onConfirm = { name, dLat, dLon ->
-                container.addDestination(name, dLat, dLon)
+                container.addDestination(name, dLat, dLon, stagingTrip?.id)
                 showCoordinateDialog = false
             },
         )
@@ -261,32 +292,45 @@ private fun configureOsmdroid(context: Context) {
     config.userAgentValue = context.packageName
 }
 
-/** Parent-only destination admin (ANDMAP-006). */
+/**
+ * Parent-only destination admin (ANDMAP-006). With [stagingTrip] set (no active trip,
+ * a planned one exists) the same panel edits the planned trip's staged itinerary via
+ * `?trip=<plannedId>` — online-only like all destination admin (ANDTRIP-007).
+ */
 @Composable
 private fun DestinationPanel(
     container: AppContainer,
     destinations: List<Destination>,
+    stagingTrip: Trip?,
+    stagingEnabled: Boolean,
     onAddByCoordinates: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Destinations",
+                if (stagingTrip != null) "Planned trip stops" else "Destinations",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onAddByCoordinates) {
+            TextButton(onClick = onAddByCoordinates, enabled = stagingEnabled) {
                 Icon(Icons.Filled.Add, contentDescription = null)
-                Text("Coordinates")
+                Text("Address / coordinates")
             }
         }
         Text(
-            "Long-press the map to add a stop.",
+            when {
+                stagingTrip != null && !stagingEnabled ->
+                    "Offline — staging \"${stagingTrip.name}\" needs the trip server."
+                stagingTrip != null ->
+                    "Staging \"${stagingTrip.name}\" — this itinerary is adopted when the trip starts. " +
+                        "Long-press the map to add a stop."
+                else -> "Long-press the map to add a stop."
+            },
             style = MaterialTheme.typography.labelSmall,
         )
         LazyColumn(modifier = Modifier.heightIn(max = 180.dp)) {
             items(destinations, key = { it.id }) { destination ->
-                DestinationRow(container, destination, destinations)
+                DestinationRow(container, destination, destinations, stagingTrip?.id, stagingEnabled)
             }
         }
     }
@@ -297,6 +341,8 @@ private fun DestinationRow(
     container: AppContainer,
     destination: Destination,
     all: List<Destination>,
+    stagingTripId: String?,
+    stagingEnabled: Boolean,
 ) {
     val pending = destination.status == DestinationStatus.PENDING
     Row(
@@ -313,13 +359,22 @@ private fun DestinationRow(
             modifier = Modifier.weight(1f),
         )
         if (pending) {
-            IconButton(onClick = { reorder(container, destination, all, -1) }) {
+            IconButton(
+                onClick = { reorder(container, destination, all, -1, stagingTripId) },
+                enabled = stagingEnabled,
+            ) {
                 Icon(Icons.Filled.ArrowUpward, contentDescription = "Move up")
             }
-            IconButton(onClick = { reorder(container, destination, all, +1) }) {
+            IconButton(
+                onClick = { reorder(container, destination, all, +1, stagingTripId) },
+                enabled = stagingEnabled,
+            ) {
                 Icon(Icons.Filled.ArrowDownward, contentDescription = "Move down")
             }
-            IconButton(onClick = { container.removeDestination(destination.id) }) {
+            IconButton(
+                onClick = { container.removeDestination(destination.id, stagingTripId) },
+                enabled = stagingEnabled,
+            ) {
                 Icon(Icons.Filled.Delete, contentDescription = "Remove")
             }
         }
@@ -331,17 +386,20 @@ private fun reorder(
     destination: Destination,
     all: List<Destination>,
     delta: Int,
+    stagingTripId: String?,
 ) {
     val sorted = all.sortedBy { it.orderIndex }
     val index = sorted.indexOfFirst { it.id == destination.id }
     val targetIndex = index + delta
     if (index < 0 || targetIndex < 0 || targetIndex >= sorted.size) return
     if (sorted[targetIndex].status != DestinationStatus.PENDING) return
-    container.reorderDestination(destination.id, sorted[targetIndex].orderIndex)
+    container.reorderDestination(destination.id, sorted[targetIndex].orderIndex, stagingTripId)
 }
 
 @Composable
 private fun AddDestinationDialog(
+    container: AppContainer,
+    role: Role,
     lat: Double?,
     lon: Double?,
     editableCoordinates: Boolean,
@@ -356,6 +414,13 @@ private fun AddDestinationDialog(
         mutableStateOf(lon?.let { String.format(java.util.Locale.US, "%.5f", it) } ?: "")
     }
 
+    // Address search (ANDMAP-008/009): explicit action only; the long-press variant keeps
+    // its pin coordinates, so search appears only alongside editable coordinate entry.
+    val scope = rememberCoroutineScope()
+    val addressSearch = remember { AddressSearch(container.api) }
+    var query by remember { mutableStateOf("") }
+    var searchState by remember { mutableStateOf<AddressSearchState>(AddressSearchState.Idle) }
+
     val parsedLat = latText.toDoubleOrNull()
     val parsedLon = lonText.toDoubleOrNull()
     val valid = name.isNotBlank() &&
@@ -367,6 +432,63 @@ private fun AddDestinationDialog(
         title = { Text("Add destination") },
         text = {
             Column {
+                if (editableCoordinates) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("Search address") },
+                    )
+                    TextButton(
+                        enabled = query.isNotBlank() && searchState != AddressSearchState.Searching,
+                        onClick = {
+                            searchState = AddressSearchState.Searching
+                            scope.launch {
+                                searchState = withContext(Dispatchers.IO) {
+                                    // Unexpected server errors degrade like unavailability:
+                                    // coordinates below keep working (ANDMAP-009).
+                                    runCatching { addressSearch.search(query, role) }
+                                        .getOrDefault(AddressSearchState.Unavailable)
+                                }
+                            }
+                        },
+                    ) {
+                        Text("Search")
+                    }
+                    when (val s = searchState) {
+                        is AddressSearchState.Results -> s.matches.forEach { match ->
+                            TextButton(
+                                onClick = {
+                                    val prefill = AddressSearch.pick(match)
+                                    name = prefill.name
+                                    latText = String.format(java.util.Locale.US, "%.5f", prefill.lat)
+                                    lonText = String.format(java.util.Locale.US, "%.5f", prefill.lon)
+                                    searchState = AddressSearchState.Idle
+                                },
+                            ) {
+                                Text(
+                                    match.displayName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        AddressSearchState.Searching -> Text(
+                            "Searching…",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        AddressSearchState.NoMatches -> Text(
+                            "No matches — try a different search.",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        AddressSearchState.Unavailable -> Text(
+                            "Address search needs internet — enter coordinates below or long-press the map.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        AddressSearchState.Idle -> {}
+                    }
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },

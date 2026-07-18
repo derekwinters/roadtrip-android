@@ -1,5 +1,6 @@
 package com.roadtrip.app.di
 
+import com.roadtrip.core.api.BingoCard
 import com.roadtrip.core.api.Checklist
 import com.roadtrip.core.api.Config
 import com.roadtrip.core.api.ConfigPatch
@@ -10,6 +11,7 @@ import com.roadtrip.core.api.DestinationPatch
 import com.roadtrip.core.api.EventsPage
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.GameStatus
+import com.roadtrip.core.api.GeocodeMatch
 import com.roadtrip.core.api.HealthResponse
 import com.roadtrip.core.api.JournalEntry
 import com.roadtrip.core.api.JournalPage
@@ -45,15 +47,17 @@ class DelegatingRoadtripApi(private val current: () -> RoadtripApi) : RoadtripAp
 
     override suspend fun putConfig(patch: ConfigPatch): Config = current().putConfig(patch)
 
-    override suspend fun getDestinations(): List<Destination> = current().getDestinations()
+    override suspend fun getDestinations(trip: String?): List<Destination> = current().getDestinations(trip)
 
-    override suspend fun createDestination(create: DestinationCreate): Destination =
-        current().createDestination(create)
+    override suspend fun createDestination(create: DestinationCreate, trip: String?): Destination =
+        current().createDestination(create, trip)
 
-    override suspend fun updateDestination(id: String, patch: DestinationPatch): Destination =
-        current().updateDestination(id, patch)
+    override suspend fun updateDestination(id: String, patch: DestinationPatch, trip: String?): Destination =
+        current().updateDestination(id, patch, trip)
 
-    override suspend fun deleteDestination(id: String) = current().deleteDestination(id)
+    override suspend fun deleteDestination(id: String, trip: String?) = current().deleteDestination(id, trip)
+
+    override suspend fun geocode(q: String): List<GeocodeMatch> = current().geocode(q)
 
     override suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String?): SyncBatchResult =
         current().syncBatch(request, actorProfileId)
@@ -87,9 +91,21 @@ class DelegatingRoadtripApi(private val current: () -> RoadtripApi) : RoadtripAp
 
     override suspend fun endTrip(id: String): Trip = current().endTrip(id)
 
+    override suspend fun createPlannedTrip(name: String?, plannedStartAt: String?): Trip =
+        current().createPlannedTrip(name, plannedStartAt)
+
+    override suspend fun startTrip(id: String): Trip = current().startTrip(id)
+
+    override suspend fun patchTrip(id: String, name: String?, plannedStartAt: String?): Trip =
+        current().patchTrip(id, name, plannedStartAt)
+
+    override suspend fun deleteTrip(id: String) = current().deleteTrip(id)
+
     override suspend fun renameTrip(id: String, name: String): Trip = current().renameTrip(id, name)
 
     override suspend fun getTripSummary(tripId: String): TripSummary = current().getTripSummary(tripId)
+
+    override suspend fun getBingo(trip: String?): BingoCard = current().getBingo(trip)
 
     override suspend fun getGames(status: GameStatus?, profileId: String?): List<Game> =
         current().getGames(status, profileId)

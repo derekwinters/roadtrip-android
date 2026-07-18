@@ -52,6 +52,104 @@ fun StartTripDialog(
     )
 }
 
+/**
+ * Create or rename the single planned "next trip" (ANDTRIP-006). The approximate start
+ * stays a plain free-text field ("~ early August") — it is stored and displayed verbatim,
+ * never parsed.
+ */
+@Composable
+fun PlanTripDialog(
+    initialName: String,
+    initialStart: String,
+    editing: Boolean,
+    onConfirm: (name: String?, plannedStartAt: String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var start by remember { mutableStateOf(initialStart) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (editing) "Edit the planned trip" else "Plan the next trip") },
+        text = {
+            Column {
+                Text("Sketch the next road trip — name it, note roughly when it starts, and stage stops from the map.")
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Trip name (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+                OutlinedTextField(
+                    value = start,
+                    onValueChange = { start = it },
+                    label = { Text("Approximate start (optional, e.g. \"~ early August\")") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(name.takeIf { it.isNotBlank() }, start.takeIf { it.isNotBlank() }) }) {
+                Text(if (editing) "Save" else "Plan it")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+/** Confirm activating the planned trip ("Road trip starts now", ANDTRIP-008). */
+@Composable
+fun ActivatePlannedTripDialog(
+    tripName: String,
+    stagedCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Start \"$tripName\" now?") },
+        text = {
+            Text(
+                if (stagedCount > 0) {
+                    "The $stagedCount staged stop(s) become the trip's itinerary, and " +
+                        "everything the family does from now on belongs to this trip."
+                } else {
+                    "Everything the family does from now on belongs to this trip."
+                },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Road trip starts now") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Not yet") }
+        },
+    )
+}
+
+/** Confirm deleting the planned trip and its staged itinerary (ANDTRIP-006). */
+@Composable
+fun DeletePlannedTripDialog(
+    tripName: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete the plan \"$tripName\"?") },
+        text = { Text("The planned trip and its staged stops are removed. Past trips are not affected.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Delete plan") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Keep it") }
+        },
+    )
+}
+
 @Composable
 fun EndTripDialog(
     tripName: String,
