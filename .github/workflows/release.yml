@@ -4,6 +4,12 @@ name: Release
 #  - release-please maintains version.txt + CHANGELOG from conventional commits
 #  - while a release PR is open, each main build publishes an RC prerelease with APKs
 #  - the versioned release gets final APKs attached to its notes (no store publishing)
+#
+# RC tag invariant (ANDREL-004): RC prereleases are published under opaque git tags
+# (`rc-<run_number>`) that release-please cannot parse as release versions — the
+# human-readable `v<next>-rc.<run>` appears only in the release title and APK filenames.
+# Final releases are the only SemVer tags in the repo; `rc-*` prereleases (and their
+# tags) are pruned when a final release publishes.
 
 on:
   push:
@@ -21,6 +27,25 @@ jobs:
       tag_name: ${{ steps.rp.outputs.tag_name }}
       pr: ${{ steps.rp.outputs.pr }}
     steps:
+      # One-time recovery + standing guard (ANDREL-004, issue #69): earlier RC automation
+      # tagged prereleases with SemVer tags (v1.0.0-rc.1, v1.1.0-rc.2, v1.2.0-rc.4,
+      # v1.2.1-rc.5), which release-please parses as shipped versions and ratchets the
+      # pending release version past them. Delete any such release (and its tag, via
+      # --cleanup-tag) BEFORE release-please runs so its version stream only ever sees
+      # final release tags. No checkout exists in this job — gh works repo-less with
+      # GH_REPO set. Remove this step if release-please is ever configured to manage
+      # real SemVer prerelease tags itself.
+      - name: Delete legacy SemVer-tagged RC releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release list --limit 100 --json tagName \
+            --jq '.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+-rc\\.[0-9]+$"))' \
+            | while read -r tag; do
+                echo "Deleting legacy SemVer RC release + tag: $tag"
+                gh release delete "$tag" --cleanup-tag --yes
+              done
       - id: rp
         uses: googleapis/release-please-action@v4
         with:
@@ -41,14 +66,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Determine version
         id: version
+        # `version` is the human-readable name used in release titles and APK filenames;
+        # `tag` is the git tag. For finals they coincide (SemVer, release-please's own
+        # tag); for RCs the tag is the opaque `rc-<run_number>` (ANDREL-004).
         run: |
           if [ "${{ needs.release-please.outputs.release_created }}" = "true" ]; then
             echo "kind=final" >> "$GITHUB_OUTPUT"
             echo "version=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
           else
             NEXT=$(echo '${{ needs.release-please.outputs.pr }}' | jq -r '.title' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
             echo "kind=rc" >> "$GITHUB_OUTPUT"
             echo "version=v${NEXT}-rc.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "tag=rc-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           fi
       - name: Build APKs
         run: ./gradlew :app:assembleDebug :app:assembleRelease
@@ -58,9 +88,11 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk roadtrip-${{ steps.version.outputs.version }}-debug.apk
       - name: Publish release candidate (prerelease)
         if: steps.version.outputs.kind == 'rc'
+        # Workflow re-runs reuse the run number, so delete any previous attempt first —
+        # with --cleanup-tag, since a bare `gh release delete` leaks the git tag.
         run: |
-          gh release delete "${{ steps.version.outputs.version }}" --yes 2>/dev/null || true
-          gh release create "${{ steps.version.outputs.version }}" \
+          gh release delete "${{ steps.version.outputs.tag }}" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "${{ steps.version.outputs.tag }}" \
             --prerelease \
             --target "${{ github.sha }}" \
             --title "Release candidate ${{ steps.version.outputs.version }}" \
@@ -73,3 +105,14 @@ jobs:
           gh release upload "${{ steps.version.outputs.version }}" \
             roadtrip-${{ steps.version.outputs.version }}.apk \
             roadtrip-${{ steps.version.outputs.version }}-debug.apk
+      - name: Prune release-candidate prereleases
+        if: steps.version.outputs.kind == 'final'
+        # The final release supersedes all its RCs: delete `rc-*` prereleases and their
+        # tags so only final (SemVer-tagged) releases accumulate (ANDREL-004).
+        run: |
+          gh release list --limit 100 --json tagName \
+            --jq '.[].tagName | select(test("^rc-[0-9]+$"))' \
+            | while read -r tag; do
+                echo "Pruning RC prerelease + tag: $tag"
+                gh release delete "$tag" --cleanup-tag --yes
+              done

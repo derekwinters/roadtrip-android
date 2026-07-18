@@ -10,7 +10,14 @@ plugins {
 
 // versionName comes from version.txt (release-please 'simple' strategy);
 // versionCode is derived per ANDREL-001 and must match core VersionCode.kt.
+// Guard: version.txt must be a plain release triple — a SemVer prerelease/build suffix
+// (e.g. "1.2.1-rc.4" leaked by release automation) fails here with an actionable error
+// instead of a cryptic NumberFormatException (ANDREL-001/ANDREL-004).
 val versionText = rootProject.file("version.txt").readText().trim()
+require(Regex("""^\d+\.\d+\.\d+$""").matches(versionText)) {
+    "version.txt must be a plain MAJOR.MINOR.PATCH release version, got '$versionText'; " +
+        "prerelease identifiers belong only in RC release names — ANDREL-001/ANDREL-004"
+}
 val (vMajor, vMinor, vPatch) = versionText.split(".").map { it.toInt() }
 
 android {
