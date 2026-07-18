@@ -34,7 +34,12 @@ interface RoadtripApi {
     suspend fun updateDestination(id: String, patch: DestinationPatch): Destination
     suspend fun deleteDestination(id: String)
 
-    suspend fun syncBatch(request: SyncBatchRequest): SyncBatchResult
+    /**
+     * Uploads a batch of locally-created events. [actorProfileId] overrides the signed-in
+     * profile's `X-Profile-Id` for this batch only — used to attribute `location.ping`
+     * batches to the enabling parent (ANDLOC-008).
+     */
+    suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String? = null): SyncBatchResult
     suspend fun getEvents(
         after: Long,
         limit: Int? = null,
@@ -42,14 +47,27 @@ interface RoadtripApi {
         waitSeconds: Int? = null,
     ): EventsPage
 
-    suspend fun getJournal(before: Long? = null, limit: Int? = null): JournalPage
+    // The read models accept an optional trip scope (?trip=<id>, backend TRIP-007);
+    // null keeps the server default (active trip, else most recently ended).
+    suspend fun getJournal(before: Long? = null, limit: Int? = null, trip: String? = null): JournalPage
     suspend fun postJournal(text: String): JournalEntry
 
-    suspend fun getMap(maxPoints: Int? = null): MapState
-    suspend fun getChecklist(): Checklist
-    suspend fun getLegs(): List<Leg>
+    suspend fun getMap(maxPoints: Int? = null, trip: String? = null): MapState
+    suspend fun getChecklist(trip: String? = null): Checklist
+    suspend fun getLegs(trip: String? = null): List<Leg>
     suspend fun getLeg(destinationId: String): Leg
     suspend fun getTripSummary(): TripSummary
+
+    // ---- trips (backend 12-trips.md; ANDTRIP) ----------------------------------------
+    suspend fun getTrips(): List<Trip>
+
+    /** 409 `conflict` when a trip is already active (TRIP-001). */
+    suspend fun createTrip(name: String? = null): Trip
+    suspend fun endTrip(id: String): Trip
+    suspend fun renameTrip(id: String, name: String): Trip
+
+    /** Per-trip aggregate, GET /api/trips/{id}/summary (TRIP-008). */
+    suspend fun getTripSummary(tripId: String): TripSummary
 
     suspend fun getGames(status: GameStatus? = null, profileId: String? = null): List<Game>
     suspend fun createGame(request: CreateGameRequest): Game

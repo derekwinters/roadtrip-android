@@ -1,5 +1,6 @@
 package com.roadtrip.core.testing
 
+import com.roadtrip.core.api.ApiException
 import com.roadtrip.core.api.Checklist
 import com.roadtrip.core.api.ClientEvent
 import com.roadtrip.core.api.Config
@@ -27,6 +28,8 @@ import com.roadtrip.core.api.SyncBatchRequest
 import com.roadtrip.core.api.SyncBatchResult
 import com.roadtrip.core.api.SyncEventResult
 import com.roadtrip.core.api.SyncStatus
+import com.roadtrip.core.api.Trip
+import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.api.TripSummary
 import com.roadtrip.core.common.Role
 import java.io.IOException
@@ -47,6 +50,9 @@ class FakeRoadtripApi : RoadtripApi {
     /** Batches the server actually received, in order. */
     val syncBatches = mutableListOf<SyncBatchRequest>()
 
+    /** Per-batch actor override (X-Profile-Id) the client sent, parallel to [syncBatches]. */
+    val syncBatchActors = mutableListOf<String?>()
+
     /** When > 0: the next batch is fully processed, then the response is "lost". */
     var loseResponses: Int = 0
 
@@ -55,6 +61,16 @@ class FakeRoadtripApi : RoadtripApi {
 
     /** The /api/events feed. */
     val feed = mutableListOf<EventDto>()
+
+    /** Trips read model; createTrip/endTrip mutate it with server-side arbitration. */
+    val trips = mutableListOf<Trip>()
+    private var nextTripNo = 1
+
+    /** Per-trip scoped read models for the ?trip=<id> parameter (TRIP-007/008). */
+    val journalByTrip = mutableMapOf<String, JournalPage>()
+    val checklistByTrip = mutableMapOf<String, Checklist>()
+    val legsByTrip = mutableMapOf<String, List<Leg>>()
+    val summaryByTrip = mutableMapOf<String, TripSummary>()
 
     var profiles: List<Profile> = emptyList()
     var config: Config = Config(300, 100.0, 10.0, 800.0, 10.0)
@@ -156,9 +172,10 @@ class FakeRoadtripApi : RoadtripApi {
         destinations = destinations.filterNot { it.id == id }
     }
 
-    override suspend fun syncBatch(request: SyncBatchRequest): SyncBatchResult {
+    override suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String?): SyncBatchResult {
         guard()
         syncBatches += request
+        syncBatchActors += actorProfileId
         val results = request.events.map { event ->
             val rejection = rejectWhen(event)
             when {
@@ -192,8 +209,9 @@ class FakeRoadtripApi : RoadtripApi {
         return EventsPage(matching, matching.lastOrNull()?.seq ?: after)
     }
 
-    override suspend fun getJournal(before: Long?, limit: Int?): JournalPage {
+    override suspend fun getJournal(before: Long?, limit: Int?, trip: String?): JournalPage {
         guard()
+        if (trip != null) return journalByTrip[trip] ?: JournalPage(emptyList(), null)
         return journalPage
     }
 
@@ -202,18 +220,20 @@ class FakeRoadtripApi : RoadtripApi {
         return JournalEntry(seq = nextSeq++, kind = JournalKind.POST, ts = "2026-07-18T12:00:00Z", text = text)
     }
 
-    override suspend fun getMap(maxPoints: Int?): MapState {
+    override suspend fun getMap(maxPoints: Int?, trip: String?): MapState {
         guard()
         return mapState
     }
 
-    override suspend fun getChecklist(): Checklist {
+    override suspend fun getChecklist(trip: String?): Checklist {
         guard()
+        if (trip != null) return checklistByTrip[trip] ?: Checklist()
         return checklist
     }
 
-    override suspend fun getLegs(): List<Leg> {
+    override suspend fun getLegs(trip: String?): List<Leg> {
         guard()
+        if (trip != null) return legsByTrip[trip] ?: emptyList()
         return legs
     }
 
@@ -225,6 +245,58 @@ class FakeRoadtripApi : RoadtripApi {
     override suspend fun getTripSummary(): TripSummary {
         guard()
         return tripSummary
+    }
+
+    // ---- trips (server-side single-active-trip arbitration, TRIP-001/002) --------------
+
+    override suspend fun getTrips(): List<Trip> {
+        guard()
+        return trips.toList()
+    }
+
+    override suspend fun createTrip(name: String?): Trip {
+        guard()
+        if (trips.any { it.status == TripStatus.ACTIVE }) {
+            throw ApiException(409, "conflict", "a trip is already active")
+        }
+        val n = nextTripNo++
+        val trip = Trip(
+            id = "trip-$n",
+            name = name ?: "Road Trip $n",
+            status = TripStatus.ACTIVE,
+            startedAt = TestData.ts(n * 1000L),
+        )
+        trips += trip
+        return trip
+    }
+
+    override suspend fun endTrip(id: String): Trip {
+        guard()
+        val index = trips.indexOfFirst { it.id == id }
+        val existing = trips.getOrNull(index) ?: throw ApiException(404, "not_found", "no such trip")
+        if (existing.status != TripStatus.ACTIVE) {
+            throw ApiException(409, "conflict", "trip is not active")
+        }
+        val ended = existing.copy(
+            status = TripStatus.ENDED,
+            endedAt = TestData.ts(nextTripNo++ * 1000L),
+        )
+        trips[index] = ended
+        return ended
+    }
+
+    override suspend fun renameTrip(id: String, name: String): Trip {
+        guard()
+        val index = trips.indexOfFirst { it.id == id }
+        val existing = trips.getOrNull(index) ?: throw ApiException(404, "not_found", "no such trip")
+        val renamed = existing.copy(name = name)
+        trips[index] = renamed
+        return renamed
+    }
+
+    override suspend fun getTripSummary(tripId: String): TripSummary {
+        guard()
+        return summaryByTrip[tripId] ?: tripSummary
     }
 
     override suspend fun getGames(status: GameStatus?, profileId: String?): List<Game> {

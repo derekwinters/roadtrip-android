@@ -1,7 +1,9 @@
 package com.roadtrip.core.sync
 
+import com.roadtrip.core.api.DeepLinkKind
 import com.roadtrip.core.api.EventDto
 import com.roadtrip.core.api.JournalEntry
+import com.roadtrip.core.api.JournalKind
 import com.roadtrip.core.common.Timestamps
 import com.roadtrip.core.storage.CursorStore
 import com.roadtrip.core.storage.InMemoryCacheStore
@@ -12,7 +14,10 @@ import com.roadtrip.core.testing.TestData
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class InboxPullerTest {
     private val api = FakeRoadtripApi()
@@ -77,5 +82,32 @@ class InboxPullerTest {
 
         val kinds = journalCache.read()!!.value.map { it.kind.name }.sorted()
         assertEquals(listOf("POST", "STATE_CROSSING"), kinds)
+    }
+
+    @Test
+    fun `folds trip started and ended events into journal entries with summary links ANDJRNL-001`() = runTest {
+        val puller = InboxPuller(api, cursors, listOf(journalApplier))
+        api.feed += TestData.event(
+            1, "trip.started",
+            buildJsonObject {
+                put("trip_id", "trip-1")
+                put("name", "Summer Loop")
+            },
+        )
+        api.feed += TestData.event(
+            2, "trip.ended",
+            buildJsonObject {
+                put("trip_id", "trip-1")
+                put("name", "Summer Loop")
+            },
+        )
+
+        puller.pullOnce()
+
+        val entries = journalCache.read()!!.value.sortedBy { it.seq }
+        assertEquals(listOf(JournalKind.TRIP_STARTED, JournalKind.TRIP_ENDED), entries.map { it.kind })
+        assertTrue(entries[0].text.contains("Summer Loop"))
+        assertEquals(DeepLinkKind.TRIP_SUMMARY, entries[0].link?.kind)
+        assertEquals("trip-1", entries[1].link?.tripId)
     }
 }

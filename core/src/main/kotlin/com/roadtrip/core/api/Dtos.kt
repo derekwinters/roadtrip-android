@@ -149,6 +149,7 @@ enum class DeepLinkKind {
     @SerialName("map_pin") MAP_PIN,
     @SerialName("checklist") CHECKLIST,
     @SerialName("leg_summary") LEG_SUMMARY,
+    @SerialName("trip_summary") TRIP_SUMMARY,
 }
 
 @Serializable
@@ -159,6 +160,7 @@ data class DeepLink(
     val lon: Double? = null,
     @SerialName("state_code") val stateCode: String? = null,
     @SerialName("destination_id") val destinationId: String? = null,
+    @SerialName("trip_id") val tripId: String? = null,
 )
 
 @Serializable
@@ -168,6 +170,8 @@ enum class JournalKind {
     @SerialName("state_crossing") STATE_CROSSING,
     @SerialName("leg_arrival") LEG_ARRIVAL,
     @SerialName("game_result") GAME_RESULT,
+    @SerialName("trip_started") TRIP_STARTED,
+    @SerialName("trip_ended") TRIP_ENDED,
 }
 
 @Serializable
@@ -263,6 +267,34 @@ data class Leg(
     @SerialName("started_at") val startedAt: String,
     @SerialName("arrived_at") val arrivedAt: String? = null,
     val summary: LegSummary? = null,
+)
+
+@Serializable
+enum class TripStatus {
+    @SerialName("active") ACTIVE,
+    @SerialName("ended") ENDED,
+}
+
+/** A named road trip (backend 12-trips.md); at most one is active at a time. */
+@Serializable
+data class Trip(
+    val id: String,
+    val name: String,
+    val status: TripStatus,
+    @SerialName("started_at") val startedAt: String,
+    @SerialName("ended_at") val endedAt: String? = null,
+)
+
+/** Body for POST /api/trips (parent-only; server default name when omitted). */
+@Serializable
+data class TripCreateRequest(
+    val name: String? = null,
+)
+
+/** Body for PATCH /api/trips/{id} (parent-only rename). */
+@Serializable
+data class TripRenameRequest(
+    val name: String,
 )
 
 @Serializable

@@ -9,6 +9,7 @@ object Routes {
     const val GAMES = "games"
     const val CHECKLIST = "checklist?state={state}"
     const val TRIP = "trip?dest={dest}"
+    const val TRIPS = "trips?trip={trip}"
     const val SETTINGS = "settings"
     const val BOARD = "board/{gameId}"
     const val REPLAY = "replay/{gameId}"
@@ -22,6 +23,10 @@ object Routes {
     fun trip(destinationId: String? = null): String =
         if (destinationId.isNullOrBlank()) "trip" else "trip?dest=$destinationId"
 
+    /** Trip history browser, optionally opened on one trip's views (ANDTRIP-003). */
+    fun trips(tripId: String? = null): String =
+        if (tripId.isNullOrBlank()) "trips" else "trips?trip=$tripId"
+
     fun board(gameId: String): String = "board/$gameId"
 
     fun replay(gameId: String): String = "replay/$gameId"
@@ -33,5 +38,6 @@ object Routes {
         is NavTarget.GameReplay -> replay(target.gameId)
         is NavTarget.ChecklistScreen -> checklist(target.stateCode)
         is NavTarget.LegSummaryScreen -> trip(target.destinationId)
+        is NavTarget.TripSummaryScreen -> trips(target.tripId)
     }
 }

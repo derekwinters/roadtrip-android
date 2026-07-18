@@ -164,6 +164,8 @@ private fun JournalRow(item: JournalFeedItem, onNavigate: (NavTarget) -> Unit) {
                 is JournalDisplay.Stop -> IconRow(Icons.Filled.Place, display.text)
                 is JournalDisplay.GameResult -> IconRow(Icons.Filled.EmojiEvents, display.text)
                 is JournalDisplay.LegArrival -> IconRow(Icons.Filled.SportsEsports, display.text, useIcon = false)
+                is JournalDisplay.TripStarted -> EmojiRow("🚗", display.text)
+                is JournalDisplay.TripEnded -> EmojiRow("🎉", display.text)
             }
             Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 Text(
@@ -191,6 +193,16 @@ private fun IconRow(icon: ImageVector, text: String, useIcon: Boolean = true) {
         } else {
             Text("🏁", style = MaterialTheme.typography.titleLarge)
         }
+        Spacer(Modifier.width(12.dp))
+        Text(text, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** Emoji-fronted feed row for the trip lifecycle entries (ANDJRNL-001). */
+@Composable
+private fun EmojiRow(emoji: String, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(emoji, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.width(12.dp))
         Text(text, style = MaterialTheme.typography.bodyLarge)
     }

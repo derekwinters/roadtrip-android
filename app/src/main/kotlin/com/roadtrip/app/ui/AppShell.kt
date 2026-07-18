@@ -1,5 +1,8 @@
 package com.roadtrip.app.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
@@ -12,16 +15,23 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -39,11 +49,14 @@ import com.roadtrip.app.ui.journal.JournalScreen
 import com.roadtrip.app.ui.map.MapScreen
 import com.roadtrip.app.ui.settings.SettingsScreen
 import com.roadtrip.app.ui.trip.TripScreen
+import com.roadtrip.app.ui.trips.StartTripDialog
+import com.roadtrip.app.ui.trips.TripsScreen
 import com.roadtrip.core.api.Profile
-import com.roadtrip.core.common.DeviceClass
 import com.roadtrip.core.journal.NavTarget
 import com.roadtrip.core.notifications.Screen
 import com.roadtrip.core.notifications.VisibleContext
+import com.roadtrip.core.trips.TripHomeState
+import com.roadtrip.core.trips.TripStateReducer
 import kotlinx.coroutines.flow.MutableStateFlow
 
 private data class TopDestination(
@@ -70,12 +83,13 @@ fun AppShell(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    // Phones (smallest width < 600dp) may host the tracker; tablets never do (ANDLOC-005).
-    val deviceClass = if (LocalConfiguration.current.smallestScreenWidthDp < 600) {
-        DeviceClass.PHONE
-    } else {
-        DeviceClass.TABLET
+    // Trip lifecycle state: active-trip name, between-trips banner, parent start/end
+    // affordances (docs/spec/09-trips.md, ANDTRIP-001/002/004).
+    val tick by container.refreshTick.collectAsState()
+    val tripHome: TripHomeState = remember(tick, online, profile) {
+        TripStateReducer.reduce(container.tripsCache.read()?.value.orEmpty(), profile.role, online)
     }
+    var showStartDialog by remember { mutableStateOf(false) }
 
     // Consume a notification tap's deep-link target (ANDNOTIF-005).
     val pending by pendingNavTarget.collectAsState()
@@ -98,6 +112,8 @@ fun AppShell(
             )
             currentRoute.startsWith("replay/") -> VisibleContext(Screen.GAMES)
             currentRoute.startsWith("checklist") -> VisibleContext(Screen.CHECKLIST)
+            // "trips" must be tested before the "trip" prefix it shares.
+            currentRoute.startsWith("trips") -> VisibleContext(Screen.TRIP)
             currentRoute.startsWith("trip") -> VisibleContext(Screen.TRIP)
             currentRoute == Routes.SETTINGS -> VisibleContext(Screen.SETTINGS)
             else -> null
@@ -145,11 +161,21 @@ fun AppShell(
                 )
             },
         ) { padding ->
-            NavHost(
-                navController = navController,
-                startDestination = Routes.JOURNAL,
-                modifier = Modifier.padding(padding),
-            ) {
+            Column(modifier = Modifier.padding(padding)) {
+                // Active-trip indicator / persistent "No active road trip" banner with the
+                // parent-only start action (ANDTRIP-001/002/004).
+                TripStrip(
+                    state = tripHome,
+                    onStart = { showStartDialog = true },
+                    onOpenHistory = {
+                        navController.navigate(Routes.trips()) { launchSingleTop = true }
+                    },
+                )
+                NavHost(
+                    navController = navController,
+                    startDestination = Routes.JOURNAL,
+                    modifier = Modifier.weight(1f),
+                ) {
                 composable(Routes.JOURNAL) {
                     JournalScreen(container, profile) { target ->
                         navController.navigate(Routes.forTarget(target)) { launchSingleTop = true }
@@ -203,11 +229,102 @@ fun AppShell(
                         navArgument("dest") { type = NavType.StringType; nullable = true; defaultValue = null },
                     ),
                 ) { entry ->
-                    TripScreen(container, entry.arguments?.getString("dest"))
+                    TripScreen(
+                        container = container,
+                        highlightDestinationId = entry.arguments?.getString("dest"),
+                        onOpenHistory = {
+                            navController.navigate(Routes.trips()) { launchSingleTop = true }
+                        },
+                    )
+                }
+                composable(
+                    Routes.TRIPS,
+                    arguments = listOf(
+                        navArgument("trip") { type = NavType.StringType; nullable = true; defaultValue = null },
+                    ),
+                ) { entry ->
+                    TripsScreen(container, entry.arguments?.getString("trip"))
                 }
                 composable(Routes.SETTINGS) {
-                    SettingsScreen(container, profile, deviceClass)
+                    SettingsScreen(container, profile)
                 }
+                }
+            }
+        }
+    }
+
+    if (showStartDialog) {
+        StartTripDialog(
+            onConfirm = { name ->
+                showStartDialog = false
+                container.startTrip(name)
+            },
+            onDismiss = { showStartDialog = false },
+        )
+    }
+}
+
+/**
+ * Slim strip under the top bar: shows the active trip's name while one runs, or the
+ * persistent "No active road trip" banner (with the parent-only, online-only start
+ * action) between trips and on first launch (ANDTRIP-001/002/004).
+ */
+@Composable
+private fun TripStrip(
+    state: TripHomeState,
+    onStart: () -> Unit,
+    onOpenHistory: () -> Unit,
+) {
+    val banner = state.bannerText
+    if (banner == null) {
+        val name = state.viewedTrip?.name ?: return
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "On the road: $name",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
+        return
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(banner, style = MaterialTheme.typography.labelLarge)
+                    val viewed = state.viewedTrip
+                    Text(
+                        when {
+                            viewed != null -> "Browsing \"${viewed.name}\" (read-only)"
+                            else -> "Welcome! Start your first road trip when you hit the road."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                if (state.viewedTrip != null) {
+                    TextButton(onClick = onOpenHistory) { Text("History") }
+                }
+                if (state.startAction.visible) {
+                    TextButton(onClick = onStart, enabled = state.startAction.enabled) {
+                        Text("Road trip starts now")
+                    }
+                }
+            }
+            if (state.startAction.visible && !state.startAction.enabled) {
+                Text(
+                    state.startAction.disabledReason.orEmpty(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
@@ -221,6 +338,7 @@ private fun titleFor(route: String?): String = when {
     route.startsWith("board/") -> "Game"
     route.startsWith("replay/") -> "Replay"
     route.startsWith("checklist") -> "Checklist"
+    route.startsWith("trips") -> "Trip history"
     route.startsWith("trip") -> "Trip"
     route == Routes.SETTINGS -> "Settings"
     else -> "Road Trip"
