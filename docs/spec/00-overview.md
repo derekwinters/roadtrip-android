@@ -38,6 +38,7 @@ One APK serves everything:
 | AND-004 | Navigation adapts by window size class: bottom bar on compact width, navigation rail on medium/expanded — same destinations (Journal, Map, Games, Checklist, Trip). | manual |
 | AND-005 | The app is fully navigable offline: cached journal, map (last known state), checklist, and summaries render without connectivity; online-only actions (game moves) show a clear offline state instead of failing silently. | auto |
 | AND-006 | An online/offline indicator reflects reachability of `GET /api/health`, re-checked on connectivity changes and sync attempts. | auto |
+| AND-007 | When `GET /api/profiles` returns an empty list, the profile picker shows a first-run "Set up your family" flow that creates the first profile (parent role enforced by the flow) and signs in as them; with one or more profiles the picker is the select-only avatar grid with no create affordance. | auto |
 
 ## Spec index
 

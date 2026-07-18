@@ -92,6 +92,20 @@ data class DestinationPatch(
     @SerialName("order_index") val orderIndex: Int? = null,
 )
 
+/** One match from the backend's GET /api/geocode proxy (ANDMAP-008). */
+@Serializable
+data class GeocodeMatch(
+    @SerialName("display_name") val displayName: String,
+    val lat: Double,
+    val lon: Double,
+)
+
+/** Response envelope of GET /api/geocode: at most 5 results. */
+@Serializable
+data class GeocodeResponse(
+    val results: List<GeocodeMatch> = emptyList(),
+)
+
 @Serializable
 data class ClientEvent(
     @SerialName("event_id") val eventId: String,

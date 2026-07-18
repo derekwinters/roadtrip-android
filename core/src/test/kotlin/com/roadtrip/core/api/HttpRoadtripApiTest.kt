@@ -1,8 +1,10 @@
 package com.roadtrip.core.api
 
+import com.roadtrip.core.common.Role
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.buildJsonObject
@@ -200,6 +202,49 @@ class HttpRoadtripApiTest {
         // The enabling parent's id overrides the signed-in profile for that batch only.
         assertEquals("p-parent", server.takeRequest().getHeader("X-Profile-Id"))
         assertEquals("profile-123", server.takeRequest().getHeader("X-Profile-Id"))
+    }
+
+    @Test
+    fun `bootstrap profile create sends no X-Profile-Id when nobody is signed in AND-007`() = runTest {
+        profileId = null // first run: no selected profile yet
+        enqueueJson("""{"id":"p-1","name":"Derek","avatar":"bear","role":"parent"}""", code = 201)
+
+        val created = api().createProfile("Derek", "bear", Role.PARENT)
+
+        assertEquals(Role.PARENT, created.role)
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/api/profiles", request.path)
+        // The backend's zero-profiles bootstrap accepts exactly this header-less parent create.
+        assertNull(request.getHeader("X-Profile-Id"))
+        assertTrue(request.body.readUtf8().contains(""""role":"parent""""))
+    }
+
+    @Test
+    fun `geocode hits the proxy with the query and parses snake_case matches ANDMAP-008`() = runTest {
+        enqueueJson(
+            """{"results":[{"display_name":"Moab, Grand County, Utah","lat":38.5733,"lon":-109.5498}]}""",
+        )
+
+        val matches = api().geocode("Moab UT")
+
+        assertEquals("/api/geocode?q=Moab%20UT", server.takeRequest().path)
+        assertEquals("Moab, Grand County, Utah", matches.single().displayName)
+        assertEquals(38.5733, matches.single().lat)
+        assertEquals(-109.5498, matches.single().lon)
+    }
+
+    @Test
+    fun `geocode 503 surfaces the geocode_unavailable error code ANDMAP-009`() = runTest {
+        enqueueJson(
+            """{"error":{"code":"geocode_unavailable","message":"upstream geocoder unreachable"}}""",
+            code = 503,
+        )
+
+        val ex = assertFailsWith<ApiException> { api().geocode("Moab") }
+
+        assertEquals(503, ex.status)
+        assertEquals("geocode_unavailable", ex.code)
     }
 
     @Test

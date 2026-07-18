@@ -29,10 +29,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.roadtrip.app.di.AppContainer
@@ -40,11 +42,16 @@ import com.roadtrip.core.api.Destination
 import com.roadtrip.core.api.DestinationStatus
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.Role
+import com.roadtrip.core.map.AddressSearch
+import com.roadtrip.core.map.AddressSearchState
 import com.roadtrip.core.map.MapMarker
 import com.roadtrip.core.map.MapScreenReducer
 import com.roadtrip.core.map.MapScreenState
 import com.roadtrip.core.map.MarkerKind
 import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -146,6 +153,8 @@ fun MapScreen(
 
     longPressPoint?.let { (lat, lon) ->
         AddDestinationDialog(
+            container = container,
+            role = profile.role,
             lat = lat,
             lon = lon,
             editableCoordinates = false,
@@ -159,6 +168,8 @@ fun MapScreen(
 
     if (showCoordinateDialog) {
         AddDestinationDialog(
+            container = container,
+            role = profile.role,
             lat = null,
             lon = null,
             editableCoordinates = true,
@@ -277,7 +288,7 @@ private fun DestinationPanel(
             )
             TextButton(onClick = onAddByCoordinates) {
                 Icon(Icons.Filled.Add, contentDescription = null)
-                Text("Coordinates")
+                Text("Address / coordinates")
             }
         }
         Text(
@@ -342,6 +353,8 @@ private fun reorder(
 
 @Composable
 private fun AddDestinationDialog(
+    container: AppContainer,
+    role: Role,
     lat: Double?,
     lon: Double?,
     editableCoordinates: Boolean,
@@ -356,6 +369,13 @@ private fun AddDestinationDialog(
         mutableStateOf(lon?.let { String.format(java.util.Locale.US, "%.5f", it) } ?: "")
     }
 
+    // Address search (ANDMAP-008/009): explicit action only; the long-press variant keeps
+    // its pin coordinates, so search appears only alongside editable coordinate entry.
+    val scope = rememberCoroutineScope()
+    val addressSearch = remember { AddressSearch(container.api) }
+    var query by remember { mutableStateOf("") }
+    var searchState by remember { mutableStateOf<AddressSearchState>(AddressSearchState.Idle) }
+
     val parsedLat = latText.toDoubleOrNull()
     val parsedLon = lonText.toDoubleOrNull()
     val valid = name.isNotBlank() &&
@@ -367,6 +387,63 @@ private fun AddDestinationDialog(
         title = { Text("Add destination") },
         text = {
             Column {
+                if (editableCoordinates) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("Search address") },
+                    )
+                    TextButton(
+                        enabled = query.isNotBlank() && searchState != AddressSearchState.Searching,
+                        onClick = {
+                            searchState = AddressSearchState.Searching
+                            scope.launch {
+                                searchState = withContext(Dispatchers.IO) {
+                                    // Unexpected server errors degrade like unavailability:
+                                    // coordinates below keep working (ANDMAP-009).
+                                    runCatching { addressSearch.search(query, role) }
+                                        .getOrDefault(AddressSearchState.Unavailable)
+                                }
+                            }
+                        },
+                    ) {
+                        Text("Search")
+                    }
+                    when (val s = searchState) {
+                        is AddressSearchState.Results -> s.matches.forEach { match ->
+                            TextButton(
+                                onClick = {
+                                    val prefill = AddressSearch.pick(match)
+                                    name = prefill.name
+                                    latText = String.format(java.util.Locale.US, "%.5f", prefill.lat)
+                                    lonText = String.format(java.util.Locale.US, "%.5f", prefill.lon)
+                                    searchState = AddressSearchState.Idle
+                                },
+                            ) {
+                                Text(
+                                    match.displayName,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        AddressSearchState.Searching -> Text(
+                            "Searching…",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        AddressSearchState.NoMatches -> Text(
+                            "No matches — try a different search.",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        AddressSearchState.Unavailable -> Text(
+                            "Address search needs internet — enter coordinates below or long-press the map.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        AddressSearchState.Idle -> {}
+                    }
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },

@@ -35,6 +35,14 @@ interface RoadtripApi {
     suspend fun deleteDestination(id: String)
 
     /**
+     * Address search through the backend's geocode proxy (parent-only): up to 5 matches
+     * for the add-destination flow (ANDMAP-008). Answers 503 `geocode_unavailable` when
+     * the server can't reach the upstream geocoder — callers map that (and transport
+     * failures) to a needs-internet state (ANDMAP-009).
+     */
+    suspend fun geocode(q: String): List<GeocodeMatch>
+
+    /**
      * Uploads a batch of locally-created events. [actorProfileId] overrides the signed-in
      * profile's `X-Profile-Id` for this batch only — used to attribute `location.ping`
      * batches to the enabling parent (ANDLOC-008).

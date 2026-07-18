@@ -8,7 +8,8 @@ import com.roadtrip.core.storage.SelectedProfileStore
 /**
  * Launch profile picker: avatars from GET /api/profiles, tapping one selects it — no
  * passwords anywhere; the selection persists across restarts via [SelectedProfileStore]
- * (AND-001/002).
+ * (AND-001/002). A zero-profile server puts the picker into the first-run family setup
+ * flow instead of the grid (AND-007).
  */
 class ProfilePicker(
     private val api: RoadtripApi,
@@ -21,6 +22,39 @@ class ProfilePicker(
     }
 
     fun selected(): Profile? = store.get()
+
+    /**
+     * First-run bootstrap (AND-007): creates the very first profile and signs in as them.
+     * The parent role is enforced by the flow — the backend's zero-profiles bootstrap
+     * accepts an unauthenticated POST /api/profiles only for role=parent — and the call
+     * carries no `X-Profile-Id` because nobody is signed in yet ([RoadtripApi]
+     * implementations omit the header when there is no selected profile).
+     */
+    suspend fun createFirstProfile(name: String, avatar: String?): Profile {
+        val created = api.createProfile(name, avatar, Role.PARENT)
+        store.set(created)
+        return created
+    }
+}
+
+/** What the launch picker shows (AND-001/007). */
+sealed class ProfilePickerState {
+    /** Profiles not loaded yet (server or cache pending). */
+    object Loading : ProfilePickerState()
+
+    /** Zero profiles on the server: first-run "Set up your family" flow (AND-007). */
+    object SetupRequired : ProfilePickerState()
+
+    /** Select-only avatar grid — no create affordance once profiles exist (AND-007). */
+    data class Grid(val profiles: List<Profile>) : ProfilePickerState()
+}
+
+object ProfilePickerReducer {
+    fun reduce(profiles: List<Profile>?): ProfilePickerState = when {
+        profiles == null -> ProfilePickerState.Loading
+        profiles.isEmpty() -> ProfilePickerState.SetupRequired
+        else -> ProfilePickerState.Grid(profiles)
+    }
 }
 
 /**

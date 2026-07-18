@@ -23,3 +23,13 @@ on-device tile cache so the last-viewed region works offline).
 | ANDMAP-005 | Stop journal entries deep-link to the map centered on the stop's pin (see ANDJRNL-004). | auto |
 | ANDMAP-006 | Parents can create a destination by long-pressing the map (or entering coordinates), and edit/reorder/remove pending destinations; kids never see these affordances (AND-003). | manual |
 | ANDMAP-007 | Map tiles use osmdroid's cache; previously viewed areas render offline (dry-run check). | manual |
+| ANDMAP-008 | The add-destination flow offers address search: an explicit search action calls `GET /api/geocode` and lists up to 5 matches; picking one fills coordinates and pre-fills the editable name. | auto |
+| ANDMAP-009 | When geocode is unavailable (offline or 503), the address path shows a clear needs-internet state while pin and coordinate entry remain available. | auto |
+
+## Address search
+
+Address search goes through the backend's `GET /api/geocode` proxy (parent-only; up to 5
+matches of `{display_name, lat, lon}`; answers 503 `geocode_unavailable` when the upstream
+geocoder can't be reached), so the app ships no third-party geocoding SDK. Search fires only
+on an explicit action — never per keystroke — and, like the rest of destination editing, is
+gated by the profile's role attribute (AND-003): kid profiles never trigger geocode traffic.

@@ -4,10 +4,13 @@ Android client for the **Family Road Trip app** — one APK for parent phones an
 Talks to [roadtrip-backend](https://github.com/derekwinters/roadtrip-backend) over the
 car-hotspot VPN and stays fully usable offline.
 
+- **Profiles** — passwordless avatar picker; the first launch walks through family setup,
+  starting with a parent profile.
 - **Journal** — the shared family feed: manual posts from anyone plus automatic entries
   (stops, state crossings, game results, arrivals) with deep links.
 - **Map** — "you are here" with breadcrumb trail and progress; kids see start, current
-  position, and the next destination; parents manage the full destination list.
+  position, and the next destination; parents manage the full destination list (long-press
+  pin, coordinates, or address search via the backend geocode proxy).
 - **Games** — chess, checkers, tic-tac-toe, ultimate tic-tac-toe, hangman: lobby,
   challenges, live spectating, and replays.
 - **Location tracking** — only the parent phone runs the foreground tracker (5-minute pings,

@@ -84,6 +84,13 @@ class HttpRoadtripApi(
         requestNoContent("DELETE", url("api/destinations/$id"))
     }
 
+    // ---- geocode -----------------------------------------------------------------------
+
+    override suspend fun geocode(q: String): List<GeocodeMatch> {
+        val url = url("api/geocode") { addQueryParameter("q", q) }
+        return request("GET", url, null, GeocodeResponse.serializer()).results
+    }
+
     // ---- sync ------------------------------------------------------------------------
 
     override suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String?): SyncBatchResult =

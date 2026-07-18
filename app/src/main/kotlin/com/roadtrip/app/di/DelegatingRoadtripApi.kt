@@ -10,6 +10,7 @@ import com.roadtrip.core.api.DestinationPatch
 import com.roadtrip.core.api.EventsPage
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.GameStatus
+import com.roadtrip.core.api.GeocodeMatch
 import com.roadtrip.core.api.HealthResponse
 import com.roadtrip.core.api.JournalEntry
 import com.roadtrip.core.api.JournalPage
@@ -54,6 +55,8 @@ class DelegatingRoadtripApi(private val current: () -> RoadtripApi) : RoadtripAp
         current().updateDestination(id, patch)
 
     override suspend fun deleteDestination(id: String) = current().deleteDestination(id)
+
+    override suspend fun geocode(q: String): List<GeocodeMatch> = current().geocode(q)
 
     override suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String?): SyncBatchResult =
         current().syncBatch(request, actorProfileId)

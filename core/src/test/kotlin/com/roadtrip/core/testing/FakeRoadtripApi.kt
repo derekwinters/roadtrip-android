@@ -14,6 +14,7 @@ import com.roadtrip.core.api.EventDto
 import com.roadtrip.core.api.EventsPage
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.GameStatus
+import com.roadtrip.core.api.GeocodeMatch
 import com.roadtrip.core.api.HealthResponse
 import com.roadtrip.core.api.JournalEntry
 import com.roadtrip.core.api.JournalKind
@@ -106,8 +107,18 @@ class FakeRoadtripApi : RoadtripApi {
         return profiles
     }
 
-    override suspend fun createProfile(name: String, avatar: String?, role: Role): Profile =
-        throw UnsupportedOperationException("not stubbed")
+    /** POST /api/profiles calls the client made, for bootstrap-flow assertions (AND-007). */
+    data class CreateProfileRequest(val name: String, val avatar: String?, val role: Role)
+
+    val createProfileRequests = mutableListOf<CreateProfileRequest>()
+
+    override suspend fun createProfile(name: String, avatar: String?, role: Role): Profile {
+        guard()
+        createProfileRequests += CreateProfileRequest(name, avatar, role)
+        val created = Profile("p-${profiles.size + 1}", name, avatar ?: "star", role)
+        profiles = profiles + created
+        return created
+    }
 
     override suspend fun updateProfile(id: String, patch: ProfilePatch): Profile =
         throw UnsupportedOperationException("not stubbed")
@@ -170,6 +181,25 @@ class FakeRoadtripApi : RoadtripApi {
     override suspend fun deleteDestination(id: String) {
         guard()
         destinations = destinations.filterNot { it.id == id }
+    }
+
+    // ---- geocode (backend GET /api/geocode proxy; ANDMAP-008/009) ----------------------
+
+    /** Queries the server actually received, in order. */
+    val geocodeQueries = mutableListOf<String>()
+
+    /** Stubbed matches returned when no [geocodeHandler] is set. */
+    var geocodeResults: List<GeocodeMatch> = emptyList()
+
+    /** Failure/latency hook: set to throw (503 `geocode_unavailable`, ...) or to observe state mid-flight. */
+    var geocodeHandler: (suspend (String) -> List<GeocodeMatch>)? = null
+
+    override suspend fun geocode(q: String): List<GeocodeMatch> {
+        guard()
+        geocodeQueries += q
+        val handler = geocodeHandler
+        if (handler != null) return handler(q)
+        return geocodeResults
     }
 
     override suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String?): SyncBatchResult {
