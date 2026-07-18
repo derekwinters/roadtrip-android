@@ -6,6 +6,9 @@ import com.roadtrip.core.api.Config
 import com.roadtrip.core.api.ConfigPatch
 import com.roadtrip.core.api.CreateGameRequest
 import com.roadtrip.core.api.Destination
+import com.roadtrip.core.api.DestinationCreate
+import com.roadtrip.core.api.DestinationPatch
+import com.roadtrip.core.api.DestinationStatus
 import com.roadtrip.core.api.EventDto
 import com.roadtrip.core.api.EventsPage
 import com.roadtrip.core.api.Game
@@ -115,6 +118,42 @@ class FakeRoadtripApi : RoadtripApi {
     override suspend fun getDestinations(): List<Destination> {
         guard()
         return destinations
+    }
+
+    override suspend fun createDestination(create: DestinationCreate): Destination {
+        guard()
+        val destination = Destination(
+            id = "dest-${destinations.size + 1}",
+            name = create.name,
+            lat = create.lat,
+            lon = create.lon,
+            orderIndex = create.orderIndex ?: destinations.size,
+            status = if (destinations.none { it.status == DestinationStatus.ACTIVE }) {
+                DestinationStatus.ACTIVE
+            } else {
+                DestinationStatus.PENDING
+            },
+        )
+        destinations = destinations + destination
+        return destination
+    }
+
+    override suspend fun updateDestination(id: String, patch: DestinationPatch): Destination {
+        guard()
+        val existing = destinations.first { it.id == id }
+        val updated = existing.copy(
+            name = patch.name ?: existing.name,
+            lat = patch.lat ?: existing.lat,
+            lon = patch.lon ?: existing.lon,
+            orderIndex = patch.orderIndex ?: existing.orderIndex,
+        )
+        destinations = destinations.map { if (it.id == id) updated else it }
+        return updated
+    }
+
+    override suspend fun deleteDestination(id: String) {
+        guard()
+        destinations = destinations.filterNot { it.id == id }
     }
 
     override suspend fun syncBatch(request: SyncBatchRequest): SyncBatchResult {

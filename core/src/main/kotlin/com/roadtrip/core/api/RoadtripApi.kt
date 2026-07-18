@@ -30,6 +30,9 @@ interface RoadtripApi {
     suspend fun putConfig(patch: ConfigPatch): Config
 
     suspend fun getDestinations(): List<Destination>
+    suspend fun createDestination(create: DestinationCreate): Destination
+    suspend fun updateDestination(id: String, patch: DestinationPatch): Destination
+    suspend fun deleteDestination(id: String)
 
     suspend fun syncBatch(request: SyncBatchRequest): SyncBatchResult
     suspend fun getEvents(

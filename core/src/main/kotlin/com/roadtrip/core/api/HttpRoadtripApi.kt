@@ -66,6 +66,24 @@ class HttpRoadtripApi(
     override suspend fun getDestinations(): List<Destination> =
         get("api/destinations", ListSerializer(Destination.serializer()))
 
+    override suspend fun createDestination(create: DestinationCreate): Destination =
+        request(
+            "POST", url("api/destinations"),
+            body(DestinationCreate.serializer(), create),
+            Destination.serializer(),
+        )
+
+    override suspend fun updateDestination(id: String, patch: DestinationPatch): Destination =
+        request(
+            "PATCH", url("api/destinations/$id"),
+            body(DestinationPatch.serializer(), patch),
+            Destination.serializer(),
+        )
+
+    override suspend fun deleteDestination(id: String) {
+        requestNoContent("DELETE", url("api/destinations/$id"))
+    }
+
     // ---- sync ------------------------------------------------------------------------
 
     override suspend fun syncBatch(request: SyncBatchRequest): SyncBatchResult =
@@ -190,6 +208,15 @@ class HttpRoadtripApi(
 
     private suspend fun <R> get(path: String, responseSerializer: KSerializer<R>): R =
         request("GET", url(path), null, responseSerializer)
+
+    /** For endpoints answering 204 with an empty body. */
+    private suspend fun requestNoContent(method: String, url: HttpUrl) {
+        val builder = Request.Builder().url(url).method(method, null)
+        profileIdProvider()?.let { builder.header(PROFILE_HEADER, it) }
+        client.newCall(builder.build()).await().use { response ->
+            if (!response.isSuccessful) throw response.toApiException(response.body?.string().orEmpty())
+        }
+    }
 
     private suspend fun <R> request(
         method: String,

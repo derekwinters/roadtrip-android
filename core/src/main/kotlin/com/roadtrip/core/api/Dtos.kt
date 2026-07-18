@@ -74,6 +74,24 @@ data class Destination(
     @SerialName("arrived_at") val arrivedAt: String? = null,
 )
 
+/** Body for POST /api/destinations (parent-only). */
+@Serializable
+data class DestinationCreate(
+    val name: String,
+    val lat: Double,
+    val lon: Double,
+    @SerialName("order_index") val orderIndex: Int? = null,
+)
+
+/** Body for PATCH /api/destinations/{id} (parent-only). */
+@Serializable
+data class DestinationPatch(
+    val name: String? = null,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    @SerialName("order_index") val orderIndex: Int? = null,
+)
+
 @Serializable
 data class ClientEvent(
     @SerialName("event_id") val eventId: String,

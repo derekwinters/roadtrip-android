@@ -3,4 +3,8 @@
     <string name="app_name">Road Trip</string>
     <string name="tracking_notification_title">Trip tracking active</string>
     <string name="tracking_notification_text">This phone is reporting the family position</string>
+    <string name="tracking_stop">Stop tracking</string>
+    <string name="channel_challenges_name">Game challenges</string>
+    <string name="channel_journal_name">Journal activity</string>
+    <string name="channel_tracking_name">Trip tracking</string>
 </resources>
