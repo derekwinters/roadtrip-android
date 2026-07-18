@@ -1,0 +1,40 @@
+{
+  "entries": [
+    {
+      "seq": 41,
+      "kind": "post",
+      "ts": "2026-07-18T15:04:00Z",
+      "actor": { "id": "6f1e7a9c-1111-4f7e-9a44-000000000001", "name": "Maya", "avatar": "fox", "role": "kid" },
+      "text": "look, mountains!"
+    },
+    {
+      "seq": 40,
+      "kind": "state_crossing",
+      "ts": "2026-07-18T14:58:12Z",
+      "text": "Welcome to Colorado!",
+      "link": { "kind": "checklist", "state_code": "CO" }
+    },
+    {
+      "seq": 38,
+      "kind": "stop",
+      "ts": "2026-07-18T13:30:00Z",
+      "text": "Stopped 25 min at Scenic Overlook",
+      "link": { "kind": "map_pin", "lat": 39.7002, "lon": -105.2115 }
+    },
+    {
+      "seq": 35,
+      "kind": "game_result",
+      "ts": "2026-07-18T12:41:09Z",
+      "text": "Maya beat Derek at chess",
+      "link": { "kind": "game_replay", "game_id": "5b7c9d10-2222-4a1b-8c3d-000000000042" }
+    },
+    {
+      "seq": 30,
+      "kind": "leg_arrival",
+      "ts": "2026-07-18T11:20:45Z",
+      "text": "Arrived at Rocky Mountain NP",
+      "link": { "kind": "leg_summary", "destination_id": "9a8b7c6d-3333-4e5f-a1b2-000000000007" }
+    }
+  ],
+  "next_before": 30
+}

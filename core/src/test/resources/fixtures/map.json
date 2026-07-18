@@ -1,0 +1,20 @@
+{
+  "current": { "lat": 39.9012, "lon": -105.1001, "ts": "2026-07-18T14:32:10Z" },
+  "start": { "lat": 41.8781, "lon": -87.6298 },
+  "active_destination": {
+    "id": "9a8b7c6d-3333-4e5f-a1b2-000000000007",
+    "name": "Rocky Mountain NP",
+    "lat": 40.3428,
+    "lon": -105.6836,
+    "order_index": 1,
+    "status": "active",
+    "arrived_at": null
+  },
+  "remaining_mi": 42.7,
+  "leg_miles": 128.6,
+  "breadcrumb": [
+    { "lat": 41.8781, "lon": -87.6298, "ts": "2026-07-17T08:00:00Z" },
+    { "lat": 40.5512, "lon": -95.2103, "ts": "2026-07-17T16:12:00Z" },
+    { "lat": 39.9012, "lon": -105.1001, "ts": "2026-07-18T14:32:10Z" }
+  ]
+}
