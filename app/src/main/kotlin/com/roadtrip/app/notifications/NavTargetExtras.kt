@@ -18,6 +18,7 @@ object NavTargetExtras {
     private const val EXTRA_LON = "com.roadtrip.app.nav_lon"
     private const val EXTRA_STATE = "com.roadtrip.app.nav_state"
     private const val EXTRA_DEST = "com.roadtrip.app.nav_dest"
+    private const val EXTRA_TRIP = "com.roadtrip.app.nav_trip"
 
     private const val KIND_JOURNAL = "journal"
     private const val KIND_BOARD = "board"
@@ -25,6 +26,7 @@ object NavTargetExtras {
     private const val KIND_MAP = "map"
     private const val KIND_CHECKLIST = "checklist"
     private const val KIND_LEG = "leg"
+    private const val KIND_TRIP_SUMMARY = "trip_summary"
 
     fun intentFor(context: Context, target: NavTarget): Intent {
         val intent = Intent(context, MainActivity::class.java)
@@ -61,6 +63,11 @@ object NavTargetExtras {
                 intent.putExtra(EXTRA_DEST, target.destinationId)
                 intent.data = Uri.parse("roadtrip://nav/leg/${target.destinationId}")
             }
+            is NavTarget.TripSummaryScreen -> {
+                intent.putExtra(EXTRA_KIND, KIND_TRIP_SUMMARY)
+                intent.putExtra(EXTRA_TRIP, target.tripId)
+                intent.data = Uri.parse("roadtrip://nav/trip-summary/${target.tripId}")
+            }
         }
         return intent
     }
@@ -78,6 +85,7 @@ object NavTargetExtras {
             }
             KIND_CHECKLIST -> NavTarget.ChecklistScreen(intent.getStringExtra(EXTRA_STATE))
             KIND_LEG -> intent.getStringExtra(EXTRA_DEST)?.let { NavTarget.LegSummaryScreen(it) }
+            KIND_TRIP_SUMMARY -> intent.getStringExtra(EXTRA_TRIP)?.let { NavTarget.TripSummaryScreen(it) }
             else -> null
         }
     }

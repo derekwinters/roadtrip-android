@@ -6,6 +6,8 @@ import com.roadtrip.core.api.GameMode
 import com.roadtrip.core.api.GameStatus
 import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
+import com.roadtrip.core.api.Trip
+import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.common.Clock
 import com.roadtrip.core.common.IdGenerator
 import com.roadtrip.core.common.Role
@@ -88,6 +90,14 @@ object TestData {
             },
             actorId = actorId,
         )
+
+    fun trip(
+        id: String = "trip-1",
+        name: String = "Summer Loop",
+        status: TripStatus = TripStatus.ACTIVE,
+        startedAt: String = ts(0),
+        endedAt: String? = null,
+    ): Trip = Trip(id = id, name = name, status = status, startedAt = startedAt, endedAt = endedAt)
 
     fun game(
         id: String = "g-1",

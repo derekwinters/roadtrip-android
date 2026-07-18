@@ -4,8 +4,9 @@
 
 Parents get a settings screen with: detection tuning (the parent-configurable radii —
 `stop_radius_m`, `min_stop_duration_min`, `arrival_radius_m`, `ping_interval_s`,
-`city_radius_km`), the phone tracker toggle (ANDLOC), profile administration, and server
-address. Kids get only: server address display and app version.
+`city_radius_km`), the trip tracker toggle (ANDLOC — any device class), the road trip
+start/end actions (ANDTRIP), profile administration, and server address. Kids get only:
+server address display and app version.
 
 ## Requirements
 

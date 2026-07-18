@@ -29,9 +29,18 @@ class DeepLinkRouterTest {
     }
 
     @Test
+    fun `routes trip summary links to the trip summary screen ANDJRNL-004`() {
+        assertEquals(
+            NavTarget.TripSummaryScreen("trip-1"),
+            DeepLinkRouter.route(DeepLink(DeepLinkKind.TRIP_SUMMARY, tripId = "trip-1")),
+        )
+    }
+
+    @Test
     fun `returns null for links missing their required payload ANDJRNL-004`() {
         assertNull(DeepLinkRouter.route(DeepLink(DeepLinkKind.GAME_REPLAY)))
         assertNull(DeepLinkRouter.route(DeepLink(DeepLinkKind.MAP_PIN, lat = 39.7)))
         assertNull(DeepLinkRouter.route(DeepLink(DeepLinkKind.LEG_SUMMARY)))
+        assertNull(DeepLinkRouter.route(DeepLink(DeepLinkKind.TRIP_SUMMARY)))
     }
 }

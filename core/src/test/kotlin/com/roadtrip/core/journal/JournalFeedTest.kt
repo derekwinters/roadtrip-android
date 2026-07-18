@@ -72,6 +72,26 @@ class JournalFeedTest {
     }
 
     @Test
+    fun `renders trip started and ended entries distinctly with trip summary links ANDJRNL-001`() {
+        val started = entry(
+            6, JournalKind.TRIP_STARTED, TestData.ts(300), "Road trip \"Summer Loop\" started!",
+            DeepLink(DeepLinkKind.TRIP_SUMMARY, tripId = "trip-1"),
+        )
+        val ended = entry(
+            7, JournalKind.TRIP_ENDED, TestData.ts(360), "Road trip complete — 1,204 mi, 5 states",
+            DeepLink(DeepLinkKind.TRIP_SUMMARY, tripId = "trip-1"),
+        )
+
+        val startedDisplay = assertIs<JournalDisplay.TripStarted>(JournalFeedReducer.displayOf(started))
+        assertEquals("Road trip \"Summer Loop\" started!", startedDisplay.text)
+        assertEquals("trip-1", startedDisplay.tripId)
+
+        val endedDisplay = assertIs<JournalDisplay.TripEnded>(JournalFeedReducer.displayOf(ended))
+        assertEquals("Road trip complete — 1,204 mi, 5 states", endedDisplay.text)
+        assertEquals("trip-1", endedDisplay.tripId)
+    }
+
+    @Test
     fun `offline posts appear immediately from the outbox marked syncing ANDJRNL-002`() {
         clock.current = TestData.t(600)
         composer.post("posted with no signal")

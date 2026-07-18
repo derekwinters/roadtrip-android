@@ -42,7 +42,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Parent-phone foreground location tracker (docs/spec/03-location.md).
+ * Parent-device foreground location tracker (docs/spec/03-location.md) — available on any
+ * device class a parent enabled it on; every ping is attributed to that enabling parent
+ * (ANDLOC-003/008).
  *
  * Runs as a foregroundServiceType="location" service with the persistent "Trip tracking
  * active" notification (ANDLOC-006), samples GPS once per ping_interval_s from server
@@ -50,7 +52,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * location.ping outbox event immediately so tracking works offline (ANDLOC-001/004).
  * A single failed fix skips the cycle; three consecutive failures raise the quiet in-app
  * warning (ANDLOC-007 via the core TrackerController). An inexact allow-while-idle alarm
- * re-delivers a tick as a Doze fallback for the coroutine loop.
+ * re-delivers a tick as a Doze fallback for the coroutine loop. The loop idles while no
+ * trip is active (docs/spec/09-trips.md).
  */
 class TrackerService : Service() {
 
@@ -64,7 +67,8 @@ class TrackerService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                container.settings.setTrackerEnabled(false)
+                // Disabling clears the enabling-parent record (ANDLOC-003/008).
+                container.settings.setEnabledBy(null)
                 stopTracking()
                 return START_NOT_STICKY
             }
@@ -117,10 +121,21 @@ class TrackerService : Service() {
 
     private fun startLoop() {
         if (loopJob?.isActive == true) return
-        val controller = TrackerController(container.outboxQueue)
+        // Pings are attributed to the parent who enabled the tracker, regardless of the
+        // signed-in profile (ANDLOC-008).
+        val controller = TrackerController(
+            container.outboxQueue,
+            enabledBy = { container.settings.enabledBy() },
+        )
         val scheduler = PingScheduler()
         loopJob = serviceScope.launch {
             while (isActive) {
+                // The tracker never runs between trips (docs/spec/09-trips.md): keep the
+                // service alive but skip sampling until a trip is active again.
+                if (!container.trackerMayRun()) {
+                    delay(BETWEEN_TRIPS_POLL_MS)
+                    continue
+                }
                 val config = container.configCache.read()?.value ?: DEFAULT_CONFIG
                 val cycleStart = Instant.now()
 
@@ -228,6 +243,7 @@ class TrackerService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val SAMPLE_TIMEOUT_MS = 60_000L
         private const val MIN_CYCLE_MS = 5_000L
+        private const val BETWEEN_TRIPS_POLL_MS = 60_000L
         private const val FALLBACK_SLACK_S = 60
 
         /** Used only until the first server config lands in the cache. */

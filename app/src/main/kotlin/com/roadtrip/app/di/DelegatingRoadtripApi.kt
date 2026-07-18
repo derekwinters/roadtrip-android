@@ -21,6 +21,7 @@ import com.roadtrip.core.api.ProfilePatch
 import com.roadtrip.core.api.RoadtripApi
 import com.roadtrip.core.api.SyncBatchRequest
 import com.roadtrip.core.api.SyncBatchResult
+import com.roadtrip.core.api.Trip
 import com.roadtrip.core.api.TripSummary
 import com.roadtrip.core.common.Role
 import kotlinx.serialization.json.JsonElement
@@ -54,8 +55,8 @@ class DelegatingRoadtripApi(private val current: () -> RoadtripApi) : RoadtripAp
 
     override suspend fun deleteDestination(id: String) = current().deleteDestination(id)
 
-    override suspend fun syncBatch(request: SyncBatchRequest): SyncBatchResult =
-        current().syncBatch(request)
+    override suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String?): SyncBatchResult =
+        current().syncBatch(request, actorProfileId)
 
     override suspend fun getEvents(
         after: Long,
@@ -64,20 +65,31 @@ class DelegatingRoadtripApi(private val current: () -> RoadtripApi) : RoadtripAp
         waitSeconds: Int?,
     ): EventsPage = current().getEvents(after, limit, types, waitSeconds)
 
-    override suspend fun getJournal(before: Long?, limit: Int?): JournalPage =
-        current().getJournal(before, limit)
+    override suspend fun getJournal(before: Long?, limit: Int?, trip: String?): JournalPage =
+        current().getJournal(before, limit, trip)
 
     override suspend fun postJournal(text: String): JournalEntry = current().postJournal(text)
 
-    override suspend fun getMap(maxPoints: Int?): MapState = current().getMap(maxPoints)
+    override suspend fun getMap(maxPoints: Int?, trip: String?): MapState =
+        current().getMap(maxPoints, trip)
 
-    override suspend fun getChecklist(): Checklist = current().getChecklist()
+    override suspend fun getChecklist(trip: String?): Checklist = current().getChecklist(trip)
 
-    override suspend fun getLegs(): List<Leg> = current().getLegs()
+    override suspend fun getLegs(trip: String?): List<Leg> = current().getLegs(trip)
 
     override suspend fun getLeg(destinationId: String): Leg = current().getLeg(destinationId)
 
     override suspend fun getTripSummary(): TripSummary = current().getTripSummary()
+
+    override suspend fun getTrips(): List<Trip> = current().getTrips()
+
+    override suspend fun createTrip(name: String?): Trip = current().createTrip(name)
+
+    override suspend fun endTrip(id: String): Trip = current().endTrip(id)
+
+    override suspend fun renameTrip(id: String, name: String): Trip = current().renameTrip(id, name)
+
+    override suspend fun getTripSummary(tripId: String): TripSummary = current().getTripSummary(tripId)
 
     override suspend fun getGames(status: GameStatus?, profileId: String?): List<Game> =
         current().getGames(status, profileId)

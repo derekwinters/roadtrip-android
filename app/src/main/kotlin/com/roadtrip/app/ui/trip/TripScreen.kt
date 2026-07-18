@@ -13,10 +13,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.roadtrip.app.di.AppContainer
@@ -30,12 +32,14 @@ import java.util.Locale
 /**
  * Trip screen (ANDSET-004): whole-trip summary (miles, hours wall/moving, states, stops,
  * games, wins and journal posts per person) plus per-leg summaries. A leg-arrival deep
- * link highlights that leg (ANDJRNL-004).
+ * link highlights that leg (ANDJRNL-004). Past trips are reachable through the history
+ * browser (ANDTRIP-003).
  */
 @Composable
 fun TripScreen(
     container: AppContainer,
     highlightDestinationId: String?,
+    onOpenHistory: () -> Unit = {},
 ) {
     val tick by container.refreshTick.collectAsState()
     val online by container.onlineMonitor.online.collectAsState()
@@ -54,6 +58,18 @@ fun TripScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (!online) OfflineBanner("Offline — showing saved trip summaries")
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "This trip",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onOpenHistory) { Text("Past trips") }
+        }
 
         if (state == null) {
             Text(

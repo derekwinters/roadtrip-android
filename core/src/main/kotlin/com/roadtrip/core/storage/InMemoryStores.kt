@@ -55,3 +55,13 @@ class InMemorySelectedProfileStore : SelectedProfileStore {
         this.profile = profile
     }
 }
+
+class InMemoryTrackerConfigStore : TrackerConfigStore {
+    private var enabledBy: String? = null
+
+    override fun enabledBy(): String? = enabledBy
+
+    override fun setEnabledBy(profileId: String?) {
+        enabledBy = profileId
+    }
+}

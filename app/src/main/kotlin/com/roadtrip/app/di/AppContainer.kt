@@ -26,6 +26,8 @@ import com.roadtrip.core.api.MapState
 import com.roadtrip.core.api.OnlineMonitor
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.RoadtripApi
+import com.roadtrip.core.api.Trip
+import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.api.TripSummary
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.common.Timestamps
@@ -40,6 +42,8 @@ import com.roadtrip.core.sync.OutboxQueue
 import com.roadtrip.core.sync.SyncEngine
 import com.roadtrip.core.sync.SyncScheduler
 import com.roadtrip.core.sync.SyncTrigger
+import com.roadtrip.core.trips.TripScopedCacheStore
+import com.roadtrip.core.trips.TripStateReducer
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
@@ -102,14 +106,45 @@ class AppContainer(private val context: Context) {
     private fun <T> cache(key: String, serializer: KSerializer<T>): CacheStore<T> =
         RoomCacheStore(database.cacheDao(), key, serializer)
 
-    val journalCache = cache("journal", ListSerializer(JournalEntry.serializer()))
-    val mapCache = cache("map", MapState.serializer())
+    // ---- trips (docs/spec/09-trips.md) ----------------------------------------------------
+
+    val tripsCache = cache("trips", ListSerializer(Trip.serializer()))
+
+    /**
+     * Trip id whose data the live caches hold: the active trip, else the most recently
+     * ended one — mirroring the server's default read scope. Null until the first trips
+     * fetch (pre-trips backend), which keeps the legacy unscoped cache keys (ANDTRIP-002).
+     */
+    val viewedTripId = MutableStateFlow(
+        tripsCache.read()?.value?.let { TripStateReducer.viewedTrip(it)?.id },
+    )
+
+    /** Null = trips unknown yet (never fetched); the tracker stays permissive then. */
+    val hasActiveTrip = MutableStateFlow(
+        tripsCache.read()?.value?.any { it.status == TripStatus.ACTIVE },
+    )
+
+    /** The tracker never runs between trips (09-trips.md interface decision). */
+    fun trackerMayRun(): Boolean = hasActiveTrip.value != false
+
+    /** Point the scoped caches + tracker gate at the fresh trips list (ANDTRIP-002). */
+    private fun applyTripState(trips: List<Trip>) {
+        viewedTripId.value = TripStateReducer.viewedTrip(trips)?.id
+        hasActiveTrip.value = trips.any { it.status == TripStatus.ACTIVE }
+    }
+
+    /** Room cache keyed per trip (`journal_<tripId>`, ...) so histories never mix (ANDTRIP-002). */
+    private fun <T> tripScopedCache(base: String, serializer: KSerializer<T>): CacheStore<T> =
+        TripScopedCacheStore(base, { viewedTripId.value }) { key -> cache(key, serializer) }
+
+    val journalCache = tripScopedCache("journal", ListSerializer(JournalEntry.serializer()))
+    val mapCache = tripScopedCache("map", MapState.serializer())
     val destinationsCache = cache("destinations", ListSerializer(Destination.serializer()))
-    val checklistCache = cache("checklist", Checklist.serializer())
+    val checklistCache = tripScopedCache("checklist", Checklist.serializer())
     val configCache = cache("config", Config.serializer())
     val gamesCache = cache("games", ListSerializer(Game.serializer()))
-    val legsCache = cache("legs", ListSerializer(Leg.serializer()))
-    val tripSummaryCache = cache("trip_summary", TripSummary.serializer())
+    val legsCache = tripScopedCache("legs", ListSerializer(Leg.serializer()))
+    val tripSummaryCache = tripScopedCache("trip_summary", TripSummary.serializer())
     val profilesCache = cache("profiles", ListSerializer(Profile.serializer()))
 
     /** Per-game recorded move stream, kept so finished-game replays work offline (ANDGAME-008). */
@@ -216,6 +251,13 @@ class AppContainer(private val context: Context) {
     /** Best-effort refresh of every cached read model; each endpoint fails independently. */
     private suspend fun refreshReadModels() {
         val now = clock.now()
+        // Trips first: the trip-scoped caches below must land under the fresh trip's key
+        // so an end/start switchover never mixes histories (ANDTRIP-002).
+        runCatching {
+            val trips = api.getTrips()
+            tripsCache.write(trips, now)
+            applyTripState(trips)
+        }
         runCatching { profilesCache.write(api.getProfiles(), now) }
         runCatching { configCache.write(api.getConfig(), now) }
         runCatching { destinationsCache.write(api.getDestinations(), now) }
@@ -290,6 +332,42 @@ class AppContainer(private val context: Context) {
                 destinationError.value = e.message ?: "Destination change rejected"
             } catch (e: IOException) {
                 destinationError.value = "Offline — destination changes need the server"
+            }
+            bumpTick()
+        }
+    }
+
+    /**
+     * Parent-only, online-only, confirm-dialog trip lifecycle actions (ANDTRIP-001/004).
+     * Like destination edits these call the API directly — the server arbitrates the
+     * single active trip and answers a concurrent second start with 409 `conflict`.
+     */
+    val tripActionError = MutableStateFlow<String?>(null)
+
+    fun startTrip(name: String?) = tripMutation {
+        api.createTrip(name?.trim()?.takeIf { it.isNotEmpty() })
+    }
+
+    fun endTrip(tripId: String) = tripMutation {
+        api.endTrip(tripId)
+    }
+
+    private fun tripMutation(block: suspend () -> Unit) {
+        appScope.launch {
+            try {
+                block()
+                tripActionError.value = null
+                // Re-pull trips immediately so the banner and the scoped caches switch over.
+                runCatching {
+                    val trips = api.getTrips()
+                    tripsCache.write(trips, clock.now())
+                    applyTripState(trips)
+                }
+                requestSync(SyncTrigger.POST_WRITE)
+            } catch (e: ApiException) {
+                tripActionError.value = e.message ?: "Trip change rejected"
+            } catch (e: IOException) {
+                tripActionError.value = "Offline — starting or ending a road trip needs the server"
             }
             bumpTick()
         }

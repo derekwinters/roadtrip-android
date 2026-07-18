@@ -17,7 +17,6 @@ import com.roadtrip.app.location.TrackerService
 import com.roadtrip.app.notifications.NavTargetExtras
 import com.roadtrip.app.ui.AppShell
 import com.roadtrip.app.ui.profile.ProfilePickerScreen
-import com.roadtrip.core.common.Role
 import com.roadtrip.core.journal.NavTarget
 import com.roadtrip.core.sync.SyncTrigger
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,9 +65,10 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         container.activityVisible.value = true
         container.requestSync(SyncTrigger.FOREGROUND)
-        // Restore the tracker after a relaunch if the parent left it enabled (ANDLOC-006).
-        val profile = container.settings.get()
-        if (container.settings.trackerEnabled.value && profile?.role == Role.PARENT) {
+        // Restore the tracker after a relaunch if a parent left it enabled (ANDLOC-006).
+        // The signed-in profile is irrelevant: pings stay attributed to the enabling
+        // parent (ANDLOC-008), and the tracker never runs between trips (09-trips.md).
+        if (container.settings.trackerEnabled.value && container.trackerMayRun()) {
             TrackerService.start(this)
         }
     }

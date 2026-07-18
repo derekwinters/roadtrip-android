@@ -12,9 +12,9 @@ One APK serves everything:
 
 | Device | Users | Special behavior |
 |--------|-------|------------------|
-| Parent phone | parents | location tracking (foreground service), full admin |
+| Parent phone | parents | optional location tracking (foreground service), full admin |
 | Kid tablet | kids | no location permission requested, kid map view |
-| Parent tablet | parents | admin without location tracking |
+| Parent tablet | parents | full admin, optional location tracking (same parent toggle as phones) |
 
 ## Architecture
 
@@ -45,10 +45,10 @@ One APK serves everything:
 |------|----------|
 | `01-sync.md` | Offline queue, sync engine, cursors (ANDSYNC) |
 | `02-map.md` | Map & progress view incl. kid view rules (ANDMAP) |
-| `03-location.md` | Parent-phone location tracking service (ANDLOC) |
+| `03-location.md` | Parent-device location tracking service (ANDLOC) |
 | `04-journal.md` | Journal feed, composer, deep links (ANDJRNL) |
 | `05-games.md` | Lobby, boards, challenge/spectate/replay UI (ANDGAME) |
 | `06-notifications.md` | Local notifications on phones and tablets (ANDNOTIF) |
 | `07-settings.md` | Parent settings (radii), checklist & summaries screens (ANDSET) |
 | `08-testing.md` | Test strategy, CI, release engineering |
-| `09-trips.md` | Multiple road trips: parent-only start/end, per-trip history (planned) |
+| `09-trips.md` | Multiple road trips: parent-only start/end, per-trip history (ANDTRIP) |

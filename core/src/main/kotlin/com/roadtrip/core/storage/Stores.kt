@@ -46,3 +46,13 @@ interface SelectedProfileStore {
     fun get(): Profile?
     fun set(profile: Profile?)
 }
+
+/**
+ * Per-device tracker configuration: which parent enabled tracking here. Null means the
+ * tracker is disabled. Every `location.ping` this device reports is attributed to the
+ * recorded parent, regardless of the signed-in profile (ANDLOC-003/008).
+ */
+interface TrackerConfigStore {
+    fun enabledBy(): String?
+    fun setEnabledBy(profileId: String?)
+}

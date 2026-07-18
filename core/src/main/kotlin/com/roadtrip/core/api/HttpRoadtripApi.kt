@@ -86,11 +86,14 @@ class HttpRoadtripApi(
 
     // ---- sync ------------------------------------------------------------------------
 
-    override suspend fun syncBatch(request: SyncBatchRequest): SyncBatchResult =
+    override suspend fun syncBatch(request: SyncBatchRequest, actorProfileId: String?): SyncBatchResult =
         request(
             "POST", url("api/sync/batch"),
             body(SyncBatchRequest.serializer(), request),
             SyncBatchResult.serializer(),
+            // Per-batch attribution override: ping batches upload under the enabling
+            // parent's profile id (ANDLOC-008).
+            profileOverride = actorProfileId,
         )
 
     override suspend fun getEvents(
@@ -110,10 +113,11 @@ class HttpRoadtripApi(
 
     // ---- journal ---------------------------------------------------------------------
 
-    override suspend fun getJournal(before: Long?, limit: Int?): JournalPage {
+    override suspend fun getJournal(before: Long?, limit: Int?, trip: String?): JournalPage {
         val url = url("api/journal") {
             if (before != null) addQueryParameter("before", before.toString())
             if (limit != null) addQueryParameter("limit", limit.toString())
+            if (trip != null) addQueryParameter("trip", trip)
         }
         return request("GET", url, null, JournalPage.serializer())
     }
@@ -127,22 +131,58 @@ class HttpRoadtripApi(
 
     // ---- location read models ----------------------------------------------------------
 
-    override suspend fun getMap(maxPoints: Int?): MapState {
+    override suspend fun getMap(maxPoints: Int?, trip: String?): MapState {
         val url = url("api/map") {
             if (maxPoints != null) addQueryParameter("max_points", maxPoints.toString())
+            if (trip != null) addQueryParameter("trip", trip)
         }
         return request("GET", url, null, MapState.serializer())
     }
 
-    override suspend fun getChecklist(): Checklist = get("api/checklist", Checklist.serializer())
+    override suspend fun getChecklist(trip: String?): Checklist {
+        val url = url("api/checklist") {
+            if (trip != null) addQueryParameter("trip", trip)
+        }
+        return request("GET", url, null, Checklist.serializer())
+    }
 
-    override suspend fun getLegs(): List<Leg> = get("api/legs", ListSerializer(Leg.serializer()))
+    override suspend fun getLegs(trip: String?): List<Leg> {
+        val url = url("api/legs") {
+            if (trip != null) addQueryParameter("trip", trip)
+        }
+        return request("GET", url, null, ListSerializer(Leg.serializer()))
+    }
 
     override suspend fun getLeg(destinationId: String): Leg =
         get("api/legs/$destinationId", Leg.serializer())
 
     override suspend fun getTripSummary(): TripSummary =
         get("api/trip/summary", TripSummary.serializer())
+
+    // ---- trips ---------------------------------------------------------------------------
+
+    override suspend fun getTrips(): List<Trip> =
+        get("api/trips", ListSerializer(Trip.serializer()))
+
+    override suspend fun createTrip(name: String?): Trip =
+        request(
+            "POST", url("api/trips"),
+            body(TripCreateRequest.serializer(), TripCreateRequest(name)),
+            Trip.serializer(),
+        )
+
+    override suspend fun endTrip(id: String): Trip =
+        request("POST", url("api/trips/$id/end"), emptyBody(), Trip.serializer())
+
+    override suspend fun renameTrip(id: String, name: String): Trip =
+        request(
+            "PATCH", url("api/trips/$id"),
+            body(TripRenameRequest.serializer(), TripRenameRequest(name)),
+            Trip.serializer(),
+        )
+
+    override suspend fun getTripSummary(tripId: String): TripSummary =
+        get("api/trips/$tripId/summary", TripSummary.serializer())
 
     // ---- games -------------------------------------------------------------------------
 
@@ -224,9 +264,10 @@ class HttpRoadtripApi(
         requestBody: RequestBody?,
         responseSerializer: KSerializer<R>,
         longPollSeconds: Int? = null,
+        profileOverride: String? = null,
     ): R {
         val builder = Request.Builder().url(url).method(method, requestBody)
-        profileIdProvider()?.let { builder.header(PROFILE_HEADER, it) }
+        (profileOverride ?: profileIdProvider())?.let { builder.header(PROFILE_HEADER, it) }
 
         // Long-poll requests need a read timeout comfortably above the server hold time.
         val caller = if (longPollSeconds != null) {

@@ -11,11 +11,12 @@ sealed class NavTarget {
     data class GameBoard(val gameId: String) : NavTarget()
     data class ChecklistScreen(val stateCode: String?) : NavTarget()
     data class LegSummaryScreen(val destinationId: String) : NavTarget()
+    data class TripSummaryScreen(val tripId: String) : NavTarget()
 }
 
 /**
  * Deep-link routing table (ANDJRNL-004): game result → replay, stop → map pin,
- * state crossing → checklist, leg arrival → leg summary.
+ * state crossing → checklist, leg arrival → leg summary, trip started/ended → trip summary.
  */
 object DeepLinkRouter {
     fun route(link: DeepLink): NavTarget? = when (link.kind) {
@@ -27,5 +28,6 @@ object DeepLinkRouter {
         }
         DeepLinkKind.CHECKLIST -> NavTarget.ChecklistScreen(link.stateCode)
         DeepLinkKind.LEG_SUMMARY -> link.destinationId?.let { NavTarget.LegSummaryScreen(it) }
+        DeepLinkKind.TRIP_SUMMARY -> link.tripId?.let { NavTarget.TripSummaryScreen(it) }
     }
 }

@@ -46,7 +46,7 @@ object FeatureVisibilityRules {
             destinationEditing = parent,
             settingsTuning = parent,
             profileAdmin = parent,
-            trackerToggle = parent, // device class further gates actual tracking (ANDLOC-003)
+            trackerToggle = parent, // any device class; kid profiles never see it (ANDLOC-003)
             journal = true,
             map = true,
             games = true,

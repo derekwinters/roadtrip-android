@@ -19,6 +19,12 @@ data class OutboxEntry(
     val type: String,
     val clientTs: Instant,
     val payload: JsonObject,
+    /**
+     * Attribution override: when set, sync batches containing this entry upload under
+     * this profile id instead of the signed-in profile — used to attribute location
+     * pings to the parent who enabled the tracker (ANDLOC-008). Null = signed-in profile.
+     */
+    val actorProfileId: String? = null,
 ) {
     companion object {
         const val TYPE_JOURNAL_POST = "journal.post"
@@ -42,12 +48,16 @@ class OutboxQueue(
         )
     }
 
-    /** covers: ANDLOC-001 — client_ts is the GPS sample time, not the enqueue time. */
+    /**
+     * covers: ANDLOC-001 — client_ts is the GPS sample time, not the enqueue time.
+     * [actorProfileId] attributes the ping to the enabling parent (ANDLOC-008).
+     */
     fun enqueueLocationPing(
         lat: Double,
         lon: Double,
         accuracyM: Double?,
         sampleTs: Instant,
+        actorProfileId: String? = null,
     ): OutboxEntry = enqueue(
         OutboxEntry.TYPE_LOCATION_PING,
         clientTs = sampleTs,
@@ -56,10 +66,16 @@ class OutboxQueue(
             put("lon", lon)
             if (accuracyM != null) put("accuracy_m", accuracyM)
         },
+        actorProfileId = actorProfileId,
     )
 
-    private fun enqueue(type: String, clientTs: Instant, payload: JsonObject): OutboxEntry {
-        val entry = OutboxEntry(ids.newId(), type, clientTs, payload)
+    private fun enqueue(
+        type: String,
+        clientTs: Instant,
+        payload: JsonObject,
+        actorProfileId: String? = null,
+    ): OutboxEntry {
+        val entry = OutboxEntry(ids.newId(), type, clientTs, payload, actorProfileId)
         store.add(entry)
         return entry
     }
