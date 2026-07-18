@@ -5,7 +5,7 @@
 1. **core module JVM tests** (the TDD center): sync engine (outbox/inbox/cursors), state
    reducers (map, lobby, journal, notifications), client-side game replay, DTO
    serialization against recorded backend fixtures, validation logic. Run with
-   `./gradlew :core:test` — no Android SDK required.
+   `./gradlew -p core test` — no Android SDK required (core is a standalone composite build).
 2. **app module unit tests** (Robolectric): view models wired to fakes, Room DAO tests,
    notification mapping, deep-link routing. `./gradlew :app:testDebugUnitTest`.
 3. **Contract fixtures**: JSON fixtures under `core/src/test/resources/fixtures/` mirror

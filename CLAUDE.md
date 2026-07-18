@@ -18,7 +18,7 @@ Spec-driven + test-driven, via the `roadtrip-dev` agent workflow in
 
 ## Commands
 
-- `./gradlew test` — JVM unit tests (Robolectric included)
+- `./gradlew -p core test` — core JVM unit tests (local TDD loop); `./gradlew :app:testDebugUnitTest` — app Robolectric tests
 - `./gradlew :app:assembleDebug` / `:app:assembleRelease` — build APKs
 - `./gradlew lint` — Android lint
 - `./scripts/validate-specs.sh` — spec/requirement/docs validation (also runs in CI)

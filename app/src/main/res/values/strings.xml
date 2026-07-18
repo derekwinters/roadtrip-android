@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Road Trip</string>
+    <string name="tracking_notification_title">Trip tracking active</string>
+    <string name="tracking_notification_text">This phone is reporting the family position</string>
+</resources>
