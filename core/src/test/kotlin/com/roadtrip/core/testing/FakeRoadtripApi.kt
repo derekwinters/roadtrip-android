@@ -113,7 +113,11 @@ class FakeRoadtripApi : RoadtripApi {
 
     val createProfileRequests = mutableListOf<CreateProfileRequest>()
 
+    /** When set, every createProfile throws it — e.g. the closed-bootstrap 401 (AND-009). */
+    var createProfileError: Exception? = null
+
     override suspend fun createProfile(name: String, avatar: String?, role: Role): Profile {
+        createProfileError?.let { throw it }
         guard()
         createProfileRequests += CreateProfileRequest(name, avatar, role)
         val created = Profile("p-${profiles.size + 1}", name, avatar ?: "star", role)
