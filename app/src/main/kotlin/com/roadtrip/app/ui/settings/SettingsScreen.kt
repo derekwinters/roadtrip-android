@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.roadtrip.app.di.AppContainer
+import com.roadtrip.app.location.SystemBatteryOptimizationExempter
 import com.roadtrip.app.location.TrackerService
 import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.app.ui.common.SectionHeader
@@ -204,6 +205,8 @@ fun SettingsScreen(
             var enableError by remember { mutableStateOf<String?>(null) }
 
             val permissionRequester = remember { LauncherPermissionRequester() }
+            // Parent-only: keep the service alive under Doze/OEM battery managers (ANDLOC-011).
+            val batteryExempter = remember(context) { SystemBatteryOptimizationExempter(context) }
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions(),
             ) { grants ->
@@ -235,7 +238,11 @@ fun SettingsScreen(
                             scope.launch {
                                 // The enabler records this parent as the ping actor
                                 // (ANDLOC-003/008) before the service starts.
-                                val enabler = TrackerEnabler(permissionRequester, container.settings)
+                                val enabler = TrackerEnabler(
+                                    permissionRequester,
+                                    container.settings,
+                                    batteryExempter,
+                                )
                                 when (val result = enabler.requestEnable(profile)) {
                                     EnableResult.Enabled -> TrackerService.start(context)
                                     EnableResult.PermissionDenied ->

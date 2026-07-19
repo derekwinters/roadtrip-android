@@ -19,8 +19,26 @@ requests location permissions outside the parent enable flow.
   simultaneously; the server merges their pings into the one family breadcrumb ordered by
   client_ts. No client-side de-duplication is attempted.
 - The service runs as a `foregroundServiceType="location"` service with a persistent
-  notification, samples once per interval, and survives Doze via `setExactAndAllowWhileIdle`
-  scheduling.
+  notification and samples once per interval. Its Doze fallback tick uses an
+  **exact** allow-while-idle alarm (`setExactAndAllowWhileIdle`) while a trip is active so
+  it cannot coalesce or drift under Doze; exact allow-while-idle alarms are permission-gated
+  on API 31+, so the service falls back to the inexact `setAndAllowWhileIdle` form when the
+  exact-alarm permission is not held. Between trips the tick never needs to be exact
+  (ANDLOC-012).
+- **Surviving dismissal is a first-class requirement.** Once a parent has enabled the
+  tracker and a trip is active, tracking must keep running when the app is dismissed — home
+  button, swipe-from-recents, an OEM/Doze battery-manager kill, or a device reboot — without
+  the user reopening the app:
+  - Swiping the task away triggers `onTaskRemoved`, which reschedules a near-term self-restart
+    of the foreground service whenever the tracker should still be running (ANDLOC-009).
+  - A `BOOT_COMPLETED` receiver restarts the tracker after a reboot, gated on the same
+    "should the tracker be running?" predicate the app uses on relaunch — the tracker being
+    enabled by a parent and a trip being active (ANDLOC-010). Because the gate keys only on
+    device state a parent set, kid profiles are never involved (ANDLOC-005).
+  - Enabling the tracker requests a battery-optimization exemption
+    (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) so Doze and aggressive OEM battery managers do
+    not kill the service. The request lives strictly inside the parent enable flow, so kids
+    never see it (ANDLOC-011, preserving ANDLOC-005).
 - Each sample becomes an outbox event immediately (offline-tolerant); flush follows ANDSYNC
   rules. The tracker does not run between trips (`09-trips.md`).
 
@@ -36,3 +54,7 @@ requests location permissions outside the parent enable flow.
 | ANDLOC-006 | The foreground service shows a persistent "Trip tracking active" notification and stops cleanly from it or the settings toggle. | manual |
 | ANDLOC-007 | A GPS sample failure (timeout/no fix) skips that cycle without crashing and retries next cycle; three consecutive failures surface a quiet in-app warning to parents. | auto |
 | ANDLOC-008 | `location.ping` events are attributed to the enabling parent regardless of the signed-in profile: outbox entries carry that parent's profile id, and sync batches containing them are sent under it (per-batch `X-Profile-Id`); entries with different actors never share a batch. | auto |
+| ANDLOC-009 | When the app task is swiped from recents, the tracker service reschedules a self-restart so sampling continues while the tracker is still enabled by a parent and a trip is active; it does not restart when it should not be running. | auto |
+| ANDLOC-010 | After a device reboot, a `BOOT_COMPLETED` receiver restarts the tracker without the user reopening the app, using the same enabled-by-parent-and-trip-active predicate as relaunch restore; it never restarts otherwise. | auto |
+| ANDLOC-011 | Enabling the tracker requests a battery-optimization exemption (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) as part of the parent enable flow only; kid profiles never reach it (preserving ANDLOC-005). | auto |
+| ANDLOC-012 | The Doze fallback alarm is exact (`setExactAndAllowWhileIdle`) while a trip is active when the exact-alarm permission is held, and falls back to the inexact `setAndAllowWhileIdle` form otherwise. | auto |

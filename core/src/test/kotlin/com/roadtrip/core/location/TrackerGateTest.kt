@@ -19,6 +19,15 @@ private class RecordingPermissionRequester(private val grant: Boolean = true) : 
     }
 }
 
+private class RecordingBatteryExempter : BatteryOptimizationExempter {
+    var requests = 0
+        private set
+
+    override fun requestExemptionIfNeeded() {
+        requests++
+    }
+}
+
 class TrackerGateTest {
     private val config = InMemoryTrackerConfigStore()
 
@@ -62,7 +71,8 @@ class TrackerGateTest {
     @Test
     fun `kid profiles never reach the permission request path ANDLOC-005`() = runTest {
         val requester = RecordingPermissionRequester()
-        val enabler = TrackerEnabler(requester, config)
+        val battery = RecordingBatteryExempter()
+        val enabler = TrackerEnabler(requester, config, battery)
 
         val result = enabler.requestEnable(TestData.kid)
 
@@ -70,6 +80,32 @@ class TrackerGateTest {
         assertEquals(TrackerGate.REASON_PARENT_REQUIRED, result.reason)
         // The runtime permission flow was never touched (manifest permission stays dormant).
         assertEquals(0, requester.requests)
+        // covers: ANDLOC-011 — the battery-optimization prompt is inside the parent flow, so
+        // a kid never triggers it either.
+        assertEquals(0, battery.requests)
         assertNull(config.enabledBy())
+    }
+
+    @Test
+    fun `enabling requests a battery-optimization exemption in the parent flow ANDLOC-011`() = runTest {
+        val battery = RecordingBatteryExempter()
+
+        assertIs<EnableResult.Enabled>(
+            TrackerEnabler(RecordingPermissionRequester(grant = true), config, battery)
+                .requestEnable(TestData.parent),
+        )
+        assertEquals(1, battery.requests)
+    }
+
+    @Test
+    fun `a denied enable never requests a battery-optimization exemption ANDLOC-011`() = runTest {
+        val battery = RecordingBatteryExempter()
+
+        assertIs<EnableResult.PermissionDenied>(
+            TrackerEnabler(RecordingPermissionRequester(grant = false), config, battery)
+                .requestEnable(TestData.parent),
+        )
+        // No location grant means the service never starts, so no exemption is requested.
+        assertEquals(0, battery.requests)
     }
 }

@@ -24,8 +24,10 @@ import com.roadtrip.app.RoadtripApplication
 import com.roadtrip.app.notifications.NotificationChannels
 import com.roadtrip.app.sync.SyncWork
 import com.roadtrip.core.api.Config
+import com.roadtrip.core.location.DozeAlarmPolicy
 import com.roadtrip.core.location.PingScheduler
 import com.roadtrip.core.location.TrackerController
+import com.roadtrip.core.location.TrackerRestartPolicy
 import com.roadtrip.core.sync.SyncTrigger
 import java.time.Duration
 import java.time.Instant
@@ -51,9 +53,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * config (ANDLOC-002 via the core PingScheduler), and enqueues each sample as a
  * location.ping outbox event immediately so tracking works offline (ANDLOC-001/004).
  * A single failed fix skips the cycle; three consecutive failures raise the quiet in-app
- * warning (ANDLOC-007 via the core TrackerController). An inexact allow-while-idle alarm
- * re-delivers a tick as a Doze fallback for the coroutine loop. The loop idles while no
- * trip is active (docs/spec/09-trips.md).
+ * warning (ANDLOC-007 via the core TrackerController). An allow-while-idle alarm re-delivers
+ * a tick as a Doze fallback for the coroutine loop — exact while a trip is active when the
+ * exact-alarm permission is held, inexact otherwise (ANDLOC-012). If the task is swiped from
+ * recents the service reschedules its own restart so tracking survives dismissal
+ * (ANDLOC-009). The loop idles while no trip is active (docs/spec/09-trips.md).
  */
 class TrackerService : Service() {
 
@@ -85,6 +89,23 @@ class TrackerService : Service() {
         cancelFallbackAlarm()
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Swiping the app from recents can kill this service with nothing to restart it. While a
+     * parent still has the tracker enabled and a trip is active, reschedule a near-term
+     * self-restart so sampling survives the dismissal (ANDLOC-009). When the tracker should
+     * not be running, do nothing — a swipe-away is then just a normal teardown.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (TrackerRestartPolicy.shouldRun(
+                trackerEnabled = container.settings.trackerEnabled.value,
+                trackerMayRun = container.trackerMayRun(),
+            )
+        ) {
+            scheduleRestart()
+        }
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun goForeground() {
@@ -220,19 +241,55 @@ class TrackerService : Service() {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
-    /** Doze fallback: an allow-while-idle tick shortly after the next sample is due. */
+    /**
+     * Doze fallback: an allow-while-idle tick shortly after the next sample is due. Exact
+     * (`setExactAndAllowWhileIdle`) while a trip is active and the exact-alarm permission is
+     * held so the tick can't coalesce/drift, else the inexact form (ANDLOC-012).
+     */
     private fun scheduleFallbackAlarm(intervalS: Int) {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        alarmManager.setAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + (intervalS + FALLBACK_SLACK_S) * 1000L,
-            fallbackAlarmIntent(),
+        val triggerAt = System.currentTimeMillis() + (intervalS + FALLBACK_SLACK_S) * 1000L
+        val pending = fallbackAlarmIntent()
+        val mode = DozeAlarmPolicy.mode(
+            tripActive = container.trackerMayRun(),
+            canScheduleExact = canScheduleExactAlarms(alarmManager),
         )
+        when (mode) {
+            DozeAlarmPolicy.Mode.EXACT ->
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
+            DozeAlarmPolicy.Mode.INEXACT ->
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
+        }
     }
 
     private fun cancelFallbackAlarm() {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         alarmManager.cancel(fallbackAlarmIntent())
+    }
+
+    /** Exact alarms need no permission below API 31; from 31 they are user-revocable. */
+    private fun canScheduleExactAlarms(alarmManager: AlarmManager): Boolean =
+        Build.VERSION.SDK_INT < 31 || alarmManager.canScheduleExactAlarms()
+
+    private fun restartAlarmIntent(): PendingIntent = PendingIntent.getForegroundService(
+        this,
+        3,
+        Intent(this, TrackerService::class.java).setAction(ACTION_START),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    /**
+     * Restart the foreground service a beat after the task was swiped away (ANDLOC-009). An
+     * allow-while-idle alarm briefly allowlists the app to (re)start the foreground service
+     * even under background-start restrictions when it fires.
+     */
+    private fun scheduleRestart() {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        alarmManager.setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            System.currentTimeMillis() + RESTART_DELAY_MS,
+            restartAlarmIntent(),
+        )
     }
 
     companion object {
@@ -245,6 +302,7 @@ class TrackerService : Service() {
         private const val MIN_CYCLE_MS = 5_000L
         private const val BETWEEN_TRIPS_POLL_MS = 60_000L
         private const val FALLBACK_SLACK_S = 60
+        private const val RESTART_DELAY_MS = 1_000L
 
         /** Used only until the first server config lands in the cache. */
         private val DEFAULT_CONFIG = Config(

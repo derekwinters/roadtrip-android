@@ -11,6 +11,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Resume the tracker after a reboot mid-trip without reopening the app; the receiver
+         is still gated on a parent having enabled it and a trip being active (ANDLOC-010). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Keep the foreground service alive under Doze/OEM battery managers; requested only in
+         the parent tracker-enable flow (ANDLOC-011). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Exact Doze fallback tick while a trip is active (ANDLOC-012); user-revocable, and the
+         service falls back to an inexact alarm when it is not held. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- Tablets without GPS can still install: location hardware is optional. -->
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
@@ -38,5 +47,17 @@
             android:name=".location.TrackerService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- Resumes the tracker after a reboot mid-trip (ANDLOC-010). Gated in code on
+             trackerEnabled && trackerMayRun(); kid profiles are never involved (ANDLOC-005). -->
+        <receiver
+            android:name=".location.BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
