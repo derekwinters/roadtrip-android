@@ -1,7 +1,7 @@
 package com.roadtrip.core.games
 
 /**
- * Presentation-layer ink for a board piece (ANDGAME-010). The thin Compose UI maps each value
+ * Presentation-layer ink for a board piece (ANDGAME-013). The thin Compose UI maps each value
  * to a concrete color (and, for [WHITE_OUTLINED], a dark outline/shadow so a white fill reads
  * on the light square). Keeping the mapping here makes piece styling JVM-testable.
  */
@@ -13,7 +13,7 @@ enum class PieceInk {
 }
 
 /**
- * Pure glyph/ink mappings shared by the chess and checkers boards (ANDGAME-010).
+ * Pure glyph/ink mappings shared by the chess and checkers boards (ANDGAME-013).
  *
  * Chess uses the SOLID Unicode glyphs (`♚♛♜♝♞♟`) for BOTH colors, because the outline glyphs
  * (`♔♕♖♗♘♙`) render unfilled on light squares; the side is conveyed by [PieceInk], not the glyph.
@@ -51,7 +51,7 @@ object BoardPieces {
 
 /**
  * Board sizing so every grid board fits the viewport without scrolling and pieces scale with
- * their square (ANDGAME-009). Pure math; the Compose layer converts the result to a bounded
+ * their square (ANDGAME-012). Pure math; the Compose layer converts the result to a bounded
  * square and a glyph font size.
  */
 object BoardMetrics {

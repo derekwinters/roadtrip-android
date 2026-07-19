@@ -126,7 +126,7 @@ fun ReplayScreen(
     val board: BoardState? = remember(version, currentSession) { currentSession?.board() }
 
     // Board stays out of the scroll region so it can bound itself to the viewport
-    // (ANDGAME-009); the header and playback controls flank it.
+    // (ANDGAME-012); the header and playback controls flank it.
     Column(
         modifier = Modifier
             .fillMaxSize()

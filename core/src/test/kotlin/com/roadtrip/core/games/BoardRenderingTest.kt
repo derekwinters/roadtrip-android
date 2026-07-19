@@ -11,7 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Pure board-rendering helpers (ANDGAME-009/010) and win-line exposure (ANDGAME-011).
+ * Pure board-rendering helpers (ANDGAME-012/010) and win-line exposure (ANDGAME-014).
  * Compose views stay thin; everything asserted here is plain-JVM logic.
  */
 class BoardRenderingTest {
@@ -22,10 +22,10 @@ class BoardRenderingTest {
         put("cell", cellIndex)
     }
 
-    // ---- ANDGAME-010: piece glyphs + ink -------------------------------------------------
+    // ---- ANDGAME-013: piece glyphs + ink -------------------------------------------------
 
     @Test
-    fun `chess uses solid glyphs for both colors distinguished by ink ANDGAME-010`() {
+    fun `chess uses solid glyphs for both colors distinguished by ink ANDGAME-013`() {
         // Both white and black map to the SAME solid glyph; only the ink differs.
         assertEquals(BoardPieces.chessGlyph("wK"), BoardPieces.chessGlyph("bK"))
         assertEquals("♚", BoardPieces.chessGlyph("wK"))
@@ -39,7 +39,7 @@ class BoardRenderingTest {
     }
 
     @Test
-    fun `checkers renders red vs black never white ANDGAME-010`() {
+    fun `checkers renders red vs black never white ANDGAME-013`() {
         assertEquals(PieceInk.BLACK, BoardPieces.checkersInk("w"))
         assertEquals(PieceInk.BLACK, BoardPieces.checkersInk("W"))
         assertEquals(PieceInk.RED, BoardPieces.checkersInk("r"))
@@ -52,10 +52,10 @@ class BoardRenderingTest {
         assertNull(BoardPieces.checkersGlyph(null))
     }
 
-    // ---- ANDGAME-009: board sizing ------------------------------------------------------
+    // ---- ANDGAME-012: board sizing ------------------------------------------------------
 
     @Test
-    fun `board is bounded to the smaller dimension so it fits without scrolling ANDGAME-009`() {
+    fun `board is bounded to the smaller dimension so it fits without scrolling ANDGAME-012`() {
         // Wide tablet slot: height is the limiting dimension -> square capped to height.
         assertEquals(600f, BoardMetrics.squareSide(availableWidth = 1000f, availableHeight = 600f))
         // Tall phone slot: width limits.
@@ -65,16 +65,16 @@ class BoardRenderingTest {
     }
 
     @Test
-    fun `piece glyph scales to a fraction of the square not a fixed size ANDGAME-009`() {
+    fun `piece glyph scales to a fraction of the square not a fixed size ANDGAME-012`() {
         assertEquals(0.7f, BoardMetrics.PIECE_GLYPH_FRACTION)
         assertEquals(70f, BoardMetrics.pieceGlyphSize(100f))
         assertEquals(56f, BoardMetrics.pieceGlyphSize(80f))
     }
 
-    // ---- ANDGAME-011: winning line exposure ---------------------------------------------
+    // ---- ANDGAME-014: winning line exposure ---------------------------------------------
 
     @Test
-    fun `ttt exposes the winning line indices not just the symbol ANDGAME-011`() {
+    fun `ttt exposes the winning line indices not just the symbol ANDGAME-014`() {
         val engine = ReplayEngine(GameType.TICTACTOE)
         val moves = listOf(cell(4), cell(0), cell(2), cell(1), cell(6)) // X on 2-4-6 diagonal
         val finished = assertIs<BoardState.TttBoard>(engine.fold(moves))
@@ -86,7 +86,7 @@ class BoardRenderingTest {
     }
 
     @Test
-    fun `tttWinningLine is a pure reusable helper ANDGAME-011`() {
+    fun `tttWinningLine is a pure reusable helper ANDGAME-014`() {
         val row = listOf('X', 'X', 'X', null, 'O', null, 'O', null, null)
         assertEquals(listOf(0, 1, 2), tttWinningLine(row))
         assertEquals('X', tttWinner(row))
@@ -94,7 +94,7 @@ class BoardRenderingTest {
     }
 
     @Test
-    fun `ultimate exposes macro and captured-sub-board winning lines ANDGAME-011`() {
+    fun `ultimate exposes macro and captured-sub-board winning lines ANDGAME-014`() {
         val engine = ReplayEngine(GameType.ULTIMATE)
         // X wins sub-boards 0, 1, 2 (the top macro row) on their top rows.
         val moves = listOf(

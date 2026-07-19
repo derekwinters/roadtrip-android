@@ -188,7 +188,7 @@ fun BoardScreen(
     }
 
     // The board is kept out of any vertical scroll region so it can bound itself to the
-    // viewport (ANDGAME-009); only the status line and controls above/below it are fixed.
+    // viewport (ANDGAME-012); only the status line and controls above/below it are fixed.
     Column(
         modifier = Modifier
             .fillMaxSize()

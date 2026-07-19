@@ -41,8 +41,8 @@ import com.roadtrip.core.games.PieceInk
  *
  * Grid boards bound themselves to the smaller of the available width/height so the whole
  * board fits without scrolling on tablet, and piece glyphs scale to a fraction of their
- * square (ANDGAME-009). Piece glyph/ink come from the pure core [BoardPieces] mapping
- * (ANDGAME-010); winning tiles are highlighted from the core win-line indices (ANDGAME-011).
+ * square (ANDGAME-012). Piece glyph/ink come from the pure core [BoardPieces] mapping
+ * (ANDGAME-013); winning tiles are highlighted from the core win-line indices (ANDGAME-014).
  */
 
 private val LIGHT_SQUARE = Color(0xFFF0D9B5)
@@ -80,7 +80,7 @@ fun CheckersBoardView(
     )
 }
 
-/** A board slot bounded to the largest square that fits both dimensions (ANDGAME-009). */
+/** A board slot bounded to the largest square that fits both dimensions (ANDGAME-012). */
 @Composable
 private fun BoardBox(content: @Composable BoxScope.() -> Unit) {
     BoxWithConstraints(
@@ -97,13 +97,13 @@ private fun BoardBox(content: @Composable BoxScope.() -> Unit) {
 private data class PieceStyle(val color: Color, val outline: Boolean)
 
 private fun PieceInk.toStyle(): PieceStyle = when (this) {
-    // White fill with a dark outline so it reads on the light square (ANDGAME-010).
+    // White fill with a dark outline so it reads on the light square (ANDGAME-013).
     PieceInk.WHITE_OUTLINED -> PieceStyle(Color.White, outline = true)
     PieceInk.BLACK -> PieceStyle(Color(0xFF1A1A1A), outline = false)
     PieceInk.RED -> PieceStyle(Color(0xFFC62828), outline = false)
 }
 
-/** A piece glyph sized to ~70% of its square (ANDGAME-009), tinted/outlined by ink. */
+/** A piece glyph sized to ~70% of its square (ANDGAME-012), tinted/outlined by ink. */
 @Composable
 private fun PieceGlyph(glyph: String, ink: PieceInk?) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -317,7 +317,7 @@ private fun SubBoard(
     }
 }
 
-/** A text mark (X/O or captured winner) sized to a fraction of its cell (ANDGAME-009). */
+/** A text mark (X/O or captured winner) sized to a fraction of its cell (ANDGAME-012). */
 @Composable
 private fun CellMark(text: String, fraction: Float) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

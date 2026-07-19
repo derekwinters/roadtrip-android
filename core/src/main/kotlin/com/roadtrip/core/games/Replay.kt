@@ -30,7 +30,7 @@ sealed class BoardState {
     /**
      * cells: index 0..8, 'X'/'O'/null. winningLine: the three cell indices forming the win
      * (null while the game is undecided) so the view can highlight exactly those tiles
-     * (ANDGAME-011).
+     * (ANDGAME-014).
      */
     data class TttBoard(
         val cells: List<Char?>,
@@ -42,7 +42,7 @@ sealed class BoardState {
      * boards: 9 sub-boards of 9 cells; macro: sub-board winners; nextBoard: the dictated
      * sub-board for the next move, null = free choice (decided/full board). macroWinner /
      * macroWinningLine expose the overall win and its macro-cell indices; boardWinningLines
-     * exposes the deciding three cells inside each captured sub-board (ANDGAME-011).
+     * exposes the deciding three cells inside each captured sub-board (ANDGAME-014).
      */
     data class UltimateBoard(
         val boards: List<List<Char?>>,
@@ -239,7 +239,7 @@ val TTT_LINES: List<List<Int>> = listOf(
 )
 
 /**
- * The three cell indices forming a completed line, or null if undecided (ANDGAME-011).
+ * The three cell indices forming a completed line, or null if undecided (ANDGAME-014).
  * Pure/JVM-testable so the Compose views can highlight exactly the winning tiles.
  */
 fun tttWinningLine(cells: List<Char?>): List<Int>? {
