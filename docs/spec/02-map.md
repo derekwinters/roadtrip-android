@@ -25,6 +25,23 @@ on-device tile cache so the last-viewed region works offline).
 | ANDMAP-007 | Map tiles use osmdroid's cache; previously viewed areas render offline (dry-run check). | manual |
 | ANDMAP-008 | The add-destination flow offers address search: an explicit search action calls `GET /api/geocode` and lists up to 5 matches; picking one fills coordinates and pre-fills the editable name. | auto |
 | ANDMAP-009 | When geocode is unavailable (offline or 503), the address path shows a clear needs-internet state while pin and coordinate entry remain available. | auto |
+| ANDMAP-010 | Each marker renders with distinct, kind-based iconography, all center-anchored on the point: current position is a car; trip start is a red flat dot; destinations are green flat dots (the active/next destination emphasized) — never osmdroid's default teardrop pin. The kind→style mapping is derived purely from `MarkerKind` (`markerStyleFor`), independent of which markers a role sees (ANDMAP-001). | auto |
+
+## Marker iconography
+
+Marker styling is presentational and derives only from the reducer's `MarkerKind`, so it changes
+no kid-vs-parent visibility rule (ANDMAP-001). The pure `markerStyleFor(MarkerKind)` helper in
+core maps each kind to a `MarkerStyle`, which the app module renders as a vector drawable
+(center-anchored so the glyph sits on the point):
+
+- `CURRENT` → `CAR` — a car glyph on a contrasting disc (`ic_map_car`).
+- `START` → `RED_DOT` — red flat dot (`ic_map_dot_start`).
+- `ACTIVE_DESTINATION` → `GREEN_DOT_ACTIVE` — emphasized (ringed, larger) green dot
+  (`ic_map_dot_destination_active`) so "the one we're driving to" stands out.
+- `DESTINATION` → `GREEN_DOT` — green flat dot (`ic_map_dot_destination`).
+
+Each drawable bakes in its own fill plus a white outline so it stays legible over map tiles and
+the breadcrumb polyline in both light and dark themes, rather than depending on a theme color.
 
 ## Address search
 
