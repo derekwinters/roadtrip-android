@@ -195,6 +195,36 @@ class TripPlannerTest {
         assertEquals(2, kid.card!!.itinerary.size)
     }
 
+    // ---- AND-012: the shell resolves staged destinations off the composition path -------
+
+    @Test
+    fun `planner reduce resolves the planned trip's staged itinerary via the provider AND-012`() {
+        val staged = mapOf(
+            "trip-9" to listOf(
+                Destination("d-2", "Mesa Verde", 37.23, -108.46, 1, DestinationStatus.PENDING),
+                Destination("d-1", "Arches NP", 38.73, -109.59, 0, DestinationStatus.PENDING),
+            ),
+        )
+        val requested = mutableListOf<String>()
+        val stagedFor: (String) -> List<Destination>? = { id -> requested += id; staged[id] }
+
+        // With a plan present the provider is asked only for the planned trip's id and its
+        // staged list feeds the card — the same result as passing the list directly.
+        val state = TripPlannerReducer.reduce(listOf(ended, planned), stagedFor, Role.PARENT, online = true)
+        assertEquals(listOf("trip-9"), requested)
+        assertEquals(listOf("Arches NP", "Mesa Verde"), state.card?.itinerary?.map { it.name })
+
+        // No planned trip: the provider is never consulted (no wasted cache read) and no card.
+        requested.clear()
+        val none = TripPlannerReducer.reduce(listOf(ended), stagedFor, Role.PARENT, online = true)
+        assertTrue(requested.isEmpty())
+        assertNull(none.card)
+
+        // A not-yet-cached staged list (null) reads as an empty itinerary, never a crash.
+        val uncached = TripPlannerReducer.reduce(listOf(planned), { null }, Role.PARENT, online = true)
+        assertEquals(emptyList<Destination>(), uncached.card?.itinerary)
+    }
+
     // ---- ANDTRIP-008: activation adopts the itinerary and switches caches ---------------
 
     @Test

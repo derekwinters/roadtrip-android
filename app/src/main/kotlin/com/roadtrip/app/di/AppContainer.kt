@@ -48,17 +48,26 @@ import com.roadtrip.core.sync.RefreshDecision
 import com.roadtrip.core.sync.SyncEngine
 import com.roadtrip.core.sync.SyncScheduler
 import com.roadtrip.core.sync.SyncTrigger
+import com.roadtrip.core.trips.PlannerState
+import com.roadtrip.core.trips.TripHomeState
+import com.roadtrip.core.trips.TripPlannerReducer
 import com.roadtrip.core.trips.TripScopedCacheStore
 import com.roadtrip.core.trips.TripStateReducer
 import java.io.IOException
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
@@ -392,6 +401,64 @@ class AppContainer(private val context: Context) {
     fun bumpTick() {
         refreshTick.value += 1
     }
+
+    // ---- off-composition trip-shell state (AND-012) ------------------------------------------
+    //
+    // The app shell's trip lifecycle + planner state used to be read synchronously inside
+    // `remember {}` during composition: a blocking Room query plus JSON decode on the main
+    // thread, re-run on every navigation, blocking the frame that should render tap feedback.
+    // These flows move that read + the pure reducers onto Dispatchers.IO (keyed on refreshTick
+    // and connectivity, memoized per profile) so composition only observes already-loaded state.
+
+    private val tripHomeFlows = ConcurrentHashMap<String, StateFlow<TripHomeState>>()
+    private val plannerFlows = ConcurrentHashMap<String, StateFlow<PlannerState>>()
+
+    /**
+     * Active-trip name / between-trips banner state for [profile], computed off the composition
+     * thread (AND-012). Recomputes on every sync ([refreshTick]) and connectivity change; the
+     * initial value is the cheap empty (first-launch) reduction so first composition never blocks
+     * on I/O and the real value arrives from IO moments later.
+     */
+    fun tripHomeFlow(profile: Profile): StateFlow<TripHomeState> =
+        tripHomeFlows.getOrPut(profile.id) {
+            combine(refreshTick, onlineMonitor.online) { _, online ->
+                TripStateReducer.reduce(tripsCache.read()?.value.orEmpty(), profile.role, online)
+            }
+                .flowOn(Dispatchers.IO)
+                .stateIn(
+                    appScope,
+                    SharingStarted.Eagerly,
+                    TripStateReducer.reduce(emptyList(), profile.role, onlineMonitor.online.value),
+                )
+        }
+
+    /**
+     * Planned-trip card state for [profile], computed off the composition thread (AND-012).
+     * The staged itinerary is resolved via the trip-scoped cache inside the pure
+     * [TripPlannerReducer.reduce] provider overload, so both cache reads happen on IO.
+     */
+    fun plannerFlow(profile: Profile): StateFlow<PlannerState> =
+        plannerFlows.getOrPut(profile.id) {
+            combine(refreshTick, onlineMonitor.online) { _, online ->
+                TripPlannerReducer.reduce(
+                    tripsCache.read()?.value.orEmpty(),
+                    { tripId -> stagedDestinationsCache(tripId).read()?.value },
+                    profile.role,
+                    online,
+                )
+            }
+                .flowOn(Dispatchers.IO)
+                .stateIn(
+                    appScope,
+                    SharingStarted.Eagerly,
+                    TripPlannerReducer.reduce(
+                        emptyList(),
+                        emptyList(),
+                        profile.role,
+                        onlineMonitor.online.value,
+                    ),
+                )
+        }
 
     /** Merges a server journal page into the cache, de-duplicated by seq (ANDJRNL-005). */
     fun mergeJournalPage(page: JournalPage) {

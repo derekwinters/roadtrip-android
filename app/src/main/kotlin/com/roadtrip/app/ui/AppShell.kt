@@ -70,7 +70,6 @@ import com.roadtrip.core.notifications.Screen
 import com.roadtrip.core.notifications.VisibleContext
 import com.roadtrip.core.trips.PlannerState
 import com.roadtrip.core.trips.TripHomeState
-import com.roadtrip.core.trips.TripPlannerReducer
 import com.roadtrip.core.trips.TripStateReducer
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -99,22 +98,16 @@ fun AppShell(
     val currentRoute = backStackEntry?.destination?.route
 
     // Trip lifecycle state: active-trip name, between-trips banner, parent start/end
-    // affordances (docs/spec/09-trips.md, ANDTRIP-001/002/004).
-    val tick by container.refreshTick.collectAsState()
-    val tripHome: TripHomeState = remember(tick, online, profile) {
-        TripStateReducer.reduce(container.tripsCache.read()?.value.orEmpty(), profile.role, online)
-    }
+    // affordances (docs/spec/09-trips.md, ANDTRIP-001/002/004). Produced off the composition
+    // thread on Dispatchers.IO so navigation never blocks a frame on Room I/O (AND-012); the
+    // shell only observes already-loaded state.
+    val tripHome: TripHomeState by remember(profile) { container.tripHomeFlow(profile) }.collectAsState()
     var showStartDialog by remember { mutableStateOf(false) }
 
     // The planned "next trip" card state for the no-active-trip banner area
-    // (ANDTRIP-006/007); the staged itinerary previews from its own cache.
-    val plannerState: PlannerState = remember(tick, online, profile) {
-        val trips = container.tripsCache.read()?.value.orEmpty()
-        val staged = TripPlannerReducer.plannedTrip(trips)
-            ?.let { container.stagedDestinationsCache(it.id).read()?.value }
-            .orEmpty()
-        TripPlannerReducer.reduce(trips, staged, profile.role, online)
-    }
+    // (ANDTRIP-006/007); the staged itinerary previews from its own cache, also read off the
+    // composition thread (AND-012).
+    val plannerState: PlannerState by remember(profile) { container.plannerFlow(profile) }.collectAsState()
     val tripError by container.tripActionError.collectAsState()
     var showPlanDialog by remember { mutableStateOf(false) }
     var showActivateDialog by remember { mutableStateOf(false) }
