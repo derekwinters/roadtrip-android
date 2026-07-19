@@ -43,6 +43,7 @@ import com.roadtrip.core.games.LobbyReducer
 import com.roadtrip.core.games.hangmanBoardStatus
 import com.roadtrip.core.games.MoveSubmitter
 import com.roadtrip.core.games.MoveOutcome
+import com.roadtrip.core.games.PlayerLegend
 import com.roadtrip.core.games.ReplayEngine
 import com.roadtrip.core.games.ReplaySession
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +77,12 @@ fun BoardScreen(
     var moveError by remember { mutableStateOf<String?>(null) }
     var boardVersion by remember { mutableIntStateOf(0) }
     var selectedSquare by remember { mutableStateOf<String?>(null) }
+
+    // profileId -> display name for the player-identity legend (ANDGAME-020); same profiles-cache
+    // read the lobby uses (ANDGAME-009), with a "Someone" fallback resolved inside PlayerLegend.
+    val profileNames = remember {
+        container.profilesCache.read()?.value.orEmpty().associate { it.id to it.name }
+    }
 
     val sessionHolder = remember { mutableStateOf<ReplaySession?>(null) }
     val followerHolder = remember { mutableStateOf<GameStreamFollower?>(null) }
@@ -238,10 +245,13 @@ fun BoardScreen(
                 Spacer(Modifier.height(12.dp))
 
                 // Board occupies the remaining height; grid boards bound to a square that
-                // fits, hangman (a tall non-grid layout) scrolls within its own slot.
-                Box(
+                // fits, hangman (a tall non-grid layout) scrolls within its own slot. Tic-tac-toe
+                // and ultimate carry a player-identity legend below (phone) / beside (tablet) the
+                // board (ANDGAME-020); other game types get an empty legend and lay out unchanged.
+                val legend = PlayerLegend.forGame(currentGame, profile.id, profileNames)
+                BoardWithLegend(
+                    legend = legend,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
                 ) {
                     when (board) {
                         is BoardState.ChessBoard -> ChessBoardView(

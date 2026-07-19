@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,7 +34,9 @@ import androidx.compose.ui.unit.sp
 import com.roadtrip.core.games.BoardMetrics
 import com.roadtrip.core.games.BoardPieces
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.LegendEntry
 import com.roadtrip.core.games.PieceInk
+import com.roadtrip.core.games.PlayerLegend
 
 /**
  * Board renderers for the five games (ANDGAME-004), driven purely by core [BoardState]
@@ -47,6 +50,15 @@ import com.roadtrip.core.games.PieceInk
 
 private val LIGHT_SQUARE = Color(0xFFF0D9B5)
 private val DARK_SQUARE = Color(0xFFB58863)
+
+/**
+ * The active/selected-square box: a 3.dp primary border (ANDGAME-012). Shared by the chess/
+ * checkers selected square, the ultimate dictated sub-board, and the on-turn legend row
+ * (ANDGAME-020) so all three read identically.
+ */
+@Composable
+private fun Modifier.activeSquareBorder(): Modifier =
+    border(3.dp, MaterialTheme.colorScheme.primary)
 
 @Composable
 fun ChessBoardView(
@@ -152,7 +164,7 @@ private fun EightByEight(
                                 .background(background)
                                 .then(
                                     if (square == selectedSquare) {
-                                        Modifier.border(3.dp, MaterialTheme.colorScheme.primary)
+                                        Modifier.activeSquareBorder()
                                     } else {
                                         Modifier
                                     },
@@ -312,6 +324,82 @@ private fun SubBoard(
                 contentAlignment = Alignment.Center,
             ) {
                 CellMark(winner.toString(), fraction = 0.8f)
+            }
+        }
+    }
+}
+
+/**
+ * Places a grid board and, for tic-tac-toe / ultimate, its player-identity legend (ANDGAME-020):
+ * the legend sits below the board on phone and beside it on tablet/wide, switched on the same
+ * width threshold as the ANDGAME-012 board sizing (`PlayerLegend.placeBeside`). An empty legend
+ * (other game types) just centres the board unchanged.
+ */
+@Composable
+fun BoardWithLegend(
+    legend: List<LegendEntry>,
+    modifier: Modifier = Modifier,
+    board: @Composable () -> Unit,
+) {
+    if (legend.isEmpty()) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) { board() }
+        return
+    }
+    BoxWithConstraints(modifier = modifier) {
+        if (PlayerLegend.placeBeside(maxWidth.value.toInt())) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentAlignment = Alignment.Center,
+                ) { board() }
+                PlayerLegendView(legend, modifier = Modifier.padding(start = 16.dp))
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) { board() }
+                Spacer(Modifier.height(12.dp))
+                PlayerLegendView(legend)
+            }
+        }
+    }
+}
+
+/**
+ * Player-identity legend for tic-tac-toe / ultimate boards (ANDGAME-020): each row maps a mark
+ * (X/O) to a player name from the pure [com.roadtrip.core.games.PlayerLegend] seam. The on-turn
+ * player's row is boxed with the same [activeSquareBorder] the board draws for the active square;
+ * the row also names "(you)" for the viewing profile. Placement (below on phone, beside on
+ * tablet) is decided by the caller — this composable just stacks the rows.
+ */
+@Composable
+fun PlayerLegendView(entries: List<LegendEntry>, modifier: Modifier = Modifier) {
+    if (entries.isEmpty()) return
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for (entry in entries) {
+            Row(
+                modifier = Modifier
+                    .then(if (entry.isTurn) Modifier.activeSquareBorder() else Modifier)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    entry.mark.toString(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontFamily = FontFamily.Monospace,
+                )
+                Text(
+                    "  —  ${entry.name}${if (entry.isYou) " (you)" else ""}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }
