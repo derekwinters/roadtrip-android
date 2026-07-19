@@ -74,6 +74,9 @@ fun JournalScreen(
             serverEntries = container.journalCache.read()?.value.orEmpty(),
             pendingOutbox = container.outboxStore.pending(),
             selfProfile = profile,
+            // Resolve author avatar/name from the live profiles cache by actor id, so an
+            // avatar change updates every row for that author (ANDJRNL-007).
+            profiles = container.profilesCache.read()?.value.orEmpty().associateBy { it.id },
         )
     }
 

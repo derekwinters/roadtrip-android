@@ -13,3 +13,4 @@ The home screen: the shared family feed. Renders the backend journal read model
 | ANDJRNL-004 | Deep links navigate per entry kind: game result → replay screen; stop → map centered on pin; state crossing → checklist; leg arrival → leg summary. | auto |
 | ANDJRNL-005 | Infinite scroll pages backward with the `before` cursor; pull-to-refresh syncs forward. | manual |
 | ANDJRNL-006 | Kid and parent profiles have identical journal capabilities (posting is never moderated or restricted). | auto |
+| ANDJRNL-007 | Author attribution (avatar + name) for actor-attributed entry kinds resolves from the current profiles cache by actor id at render time, so a profile changing its avatar/name updates every one of that author's rows; the entry's embedded `actor` snapshot is used only as a fallback when the profile is not cached (offline for an unknown profile). | auto |

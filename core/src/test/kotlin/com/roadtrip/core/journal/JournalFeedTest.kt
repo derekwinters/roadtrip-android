@@ -134,6 +134,60 @@ class JournalFeedTest {
     }
 
     @Test
+    fun `resolves author avatar and name from the current profiles cache by actor id ANDJRNL-007`() {
+        // Entry cached with the author's OLD snapshot (avatar "fox", name "Maya").
+        val post = JournalEntry(
+            seq = 1, kind = JournalKind.POST, ts = TestData.ts(0),
+            actor = TestData.kid, text = "look, mountains!",
+        )
+        // Current profiles cache: same id, but avatar/name have since changed.
+        val current = TestData.kid.copy(avatar = "unicorn", name = "Maya B.")
+        val profiles = mapOf(current.id to current)
+
+        val display = assertIs<JournalDisplay.ManualPost>(
+            JournalFeedReducer.displayOf(post, profiles),
+        )
+        assertEquals("unicorn", display.authorAvatar)
+        assertEquals("Maya B.", display.authorName)
+    }
+
+    @Test
+    fun `falls back to the embedded actor when the profile is not cached ANDJRNL-007`() {
+        val post = JournalEntry(
+            seq = 1, kind = JournalKind.POST, ts = TestData.ts(0),
+            actor = TestData.kid, text = "look, mountains!",
+        )
+        // Cache knows a different profile only — the author's id is absent.
+        val profiles = mapOf(TestData.parent.id to TestData.parent)
+
+        val display = assertIs<JournalDisplay.ManualPost>(
+            JournalFeedReducer.displayOf(post, profiles),
+        )
+        assertEquals("fox", display.authorAvatar)
+        assertEquals("Maya", display.authorName)
+    }
+
+    @Test
+    fun `reduce resolves server post attribution from the profiles cache ANDJRNL-007`() {
+        val post = JournalEntry(
+            seq = 1, kind = JournalKind.POST, ts = TestData.ts(0),
+            actor = TestData.kid, text = "hi",
+        )
+        val current = TestData.kid.copy(avatar = "unicorn", name = "Maya B.")
+
+        val feed = JournalFeedReducer.reduce(
+            serverEntries = listOf(post),
+            pendingOutbox = emptyList(),
+            selfProfile = null,
+            profiles = mapOf(current.id to current),
+        )
+
+        val display = assertIs<JournalDisplay.ManualPost>(feed.single().display)
+        assertEquals("unicorn", display.authorAvatar)
+        assertEquals("Maya B.", display.authorName)
+    }
+
+    @Test
     fun `kid and parent profiles get identical journal capabilities ANDJRNL-006`() {
         val kidCaps = composer.capabilities(Role.KID)
         val parentCaps = composer.capabilities(Role.PARENT)
