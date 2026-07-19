@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Active/next-destination map marker (ANDMAP-010): an emphasized green dot rendered larger
+     than plain destinations and drawn as a ring (white center) so "the one we're driving to"
+     stands out. White outline keeps it legible over tiles/polyline in light and dark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- White outer ring (r=11). -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M1,12 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0 z" />
+    <!-- Green body (r=9). -->
+    <path
+        android:fillColor="#FF2E7D32"
+        android:pathData="M3,12 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 z" />
+    <!-- White center hole (r=4) -> makes it read as an emphasized ring/target. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8,12 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z" />
+</vector>

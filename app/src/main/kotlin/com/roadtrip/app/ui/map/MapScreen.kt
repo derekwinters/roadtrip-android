@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import com.roadtrip.app.R
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.core.api.Destination
 import com.roadtrip.core.api.DestinationStatus
@@ -50,6 +52,8 @@ import com.roadtrip.core.map.MapMarker
 import com.roadtrip.core.map.MapScreenReducer
 import com.roadtrip.core.map.MapScreenState
 import com.roadtrip.core.map.MarkerKind
+import com.roadtrip.core.map.MarkerStyle
+import com.roadtrip.core.map.markerStyleFor
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -256,7 +260,13 @@ private fun OsmMap(
                     val osmMarker = Marker(mapView)
                     osmMarker.position = OsmGeoPoint(marker.lat, marker.lon)
                     osmMarker.title = markerTitle(marker)
-                    osmMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    // Distinct, kind-based iconography, center-anchored on the point so the
+                    // glyph sits over the location rather than a bottom-anchored teardrop pin
+                    // (ANDMAP-010). markerStyleFor is the pure core mapping; this only picks
+                    // the drawable — it does not change which markers a role sees (ANDMAP-001).
+                    ContextCompat.getDrawable(mapView.context, markerDrawableRes(marker.kind))
+                        ?.let { osmMarker.icon = it }
+                    osmMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     mapView.overlays.add(osmMarker)
                 }
 
@@ -283,6 +293,14 @@ private fun markerTitle(marker: MapMarker): String = when (marker.kind) {
     MarkerKind.CURRENT -> "We are here"
     MarkerKind.ACTIVE_DESTINATION -> "Next: ${marker.label ?: "destination"}"
     MarkerKind.DESTINATION -> marker.label ?: "Destination"
+}
+
+/** Resolves each marker kind to its drawable via the pure core style mapping (ANDMAP-010). */
+private fun markerDrawableRes(kind: MarkerKind): Int = when (markerStyleFor(kind)) {
+    MarkerStyle.CAR -> R.drawable.ic_map_car
+    MarkerStyle.RED_DOT -> R.drawable.ic_map_dot_start
+    MarkerStyle.GREEN_DOT_ACTIVE -> R.drawable.ic_map_dot_destination_active
+    MarkerStyle.GREEN_DOT -> R.drawable.ic_map_dot_destination
 }
 
 private fun configureOsmdroid(context: Context) {
