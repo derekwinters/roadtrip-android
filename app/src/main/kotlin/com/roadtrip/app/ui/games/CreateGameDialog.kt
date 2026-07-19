@@ -12,9 +12,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.Avatar
+import com.roadtrip.app.ui.common.SingleChoiceChips
 import com.roadtrip.core.api.CreateGameRequest
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.GameMode
@@ -36,6 +34,8 @@ import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.games.GameCreation
 import com.roadtrip.core.games.GameCreationValidator
+import com.roadtrip.core.games.GameModeChoices
+import com.roadtrip.core.games.GameTypeChoices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -110,43 +110,25 @@ fun CreateGameDialog(
         title = { Text("New game") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                // Single-choice selectors use the unmistakable filled + check SegmentedButton
-                // treatment (AND-013) instead of the low-contrast FilterChip selected state.
+                // Single-choice selectors are wrapping single-select choice chips (AND-013):
+                // a FlowRow of FilterChips (filled + leading check when selected) so the five
+                // game types and the two modes wrap instead of overlapping/truncating.
                 Text("Game", style = MaterialTheme.typography.labelLarge)
-                val gameTypes = listOf(
-                    GameType.CHESS,
-                    GameType.CHECKERS,
-                    GameType.TICTACTOE,
-                    GameType.ULTIMATE,
-                    GameType.HANGMAN,
+                SingleChoiceChips(
+                    options = GameTypeChoices.all.map { it.type },
+                    selected = gameType,
+                    onSelect = { gameType = it },
+                    label = { GameTypeChoices.labelFor(it) },
                 )
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    gameTypes.forEachIndexed { index, type ->
-                        SegmentedButton(
-                            selected = gameType == type,
-                            onClick = { gameType = type },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = gameTypes.size),
-                            label = { Text(gameTypeLabel(type)) },
-                        )
-                    }
-                }
                 Spacer(Modifier.height(12.dp))
 
                 Text("Mode", style = MaterialTheme.typography.labelLarge)
-                val modes = listOf(
-                    GameMode.OPEN to "Open to anyone",
-                    GameMode.CHALLENGE to "Challenge",
+                SingleChoiceChips(
+                    options = GameModeChoices.all.map { it.mode },
+                    selected = mode,
+                    onSelect = { mode = it },
+                    label = { GameModeChoices.labelFor(it) },
                 )
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    modes.forEachIndexed { index, (value, label) ->
-                        SegmentedButton(
-                            selected = mode == value,
-                            onClick = { mode = value },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                            label = { Text(label) },
-                        )
-                    }
-                }
 
                 if (mode == GameMode.CHALLENGE) {
                     Spacer(Modifier.height(8.dp))

@@ -13,9 +13,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.Avatar
+import com.roadtrip.app.ui.common.SingleChoiceChips
 import com.roadtrip.core.api.ConfigPatch
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.ProfilePatch
@@ -220,18 +218,14 @@ private fun ProfileEditDialog(
                     label = { Text("Avatar (emoji)") },
                 )
                 Spacer(Modifier.padding(4.dp))
-                // Kid/Parent as an unmistakable single-choice SegmentedButton set (AND-013),
-                // shared with the profile picker via the core RoleChoices model.
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    RoleChoices.all.forEachIndexed { index, choice ->
-                        SegmentedButton(
-                            selected = role == choice.role,
-                            onClick = { role = choice.role },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = RoleChoices.all.size),
-                            label = { Text(choice.label) },
-                        )
-                    }
-                }
+                // Kid/Parent as wrapping single-select choice chips (AND-013), shared with the
+                // profile picker via the core RoleChoices model and the SingleChoiceChips seam.
+                SingleChoiceChips(
+                    options = RoleChoices.all.map { it.role },
+                    selected = role,
+                    onSelect = { role = it },
+                    label = { RoleChoices.labelFor(it) },
+                )
             }
         },
         confirmButton = {

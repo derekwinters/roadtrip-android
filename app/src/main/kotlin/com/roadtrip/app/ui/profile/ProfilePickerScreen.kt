@@ -21,9 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.roadtrip.app.data.AppSettings
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.Avatar
+import com.roadtrip.app.ui.common.SingleChoiceChips
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.profiles.RoleChoices
@@ -276,18 +274,14 @@ private fun AddMemberDialog(
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
-                // Kid/Parent as an unmistakable single-choice SegmentedButton set (AND-013),
-                // shared with profile admin via the core RoleChoices model.
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    RoleChoices.all.forEachIndexed { index, choice ->
-                        SegmentedButton(
-                            selected = role == choice.role,
-                            onClick = { role = choice.role },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = RoleChoices.all.size),
-                            label = { Text(choice.label) },
-                        )
-                    }
-                }
+                // Kid/Parent as wrapping single-select choice chips (AND-013), shared with
+                // profile admin via the core RoleChoices model and the SingleChoiceChips seam.
+                SingleChoiceChips(
+                    options = RoleChoices.all.map { it.role },
+                    selected = role,
+                    onSelect = { role = it },
+                    label = { RoleChoices.labelFor(it) },
+                )
                 error?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(it, color = MaterialTheme.colorScheme.error)

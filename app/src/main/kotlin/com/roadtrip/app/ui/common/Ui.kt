@@ -1,15 +1,21 @@
 package com.roadtrip.app.ui.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -28,6 +34,49 @@ private val FEED_TIME = DateTimeFormatter.ofPattern("MMM d, HH:mm")
 /** "Jul 18, 14:32"-style local timestamp for feed rows. */
 fun formatFeedTime(instant: Instant, zone: ZoneId = ZoneId.systemDefault()): String =
     FEED_TIME.withZone(zone).format(instant)
+
+/**
+ * Wrapping single-select choice chips (AND-013): every single-choice selector — game type, game
+ * mode, Kid/Parent role — renders its option set as a [FlowRow] of Material 3 [FilterChip]s so
+ * options wrap and never overlap, clip, or truncate mid-word regardless of count, label length,
+ * width, or font scale. The selected option is unmistakable: a filled chip with a leading [Done]
+ * check; unselected options stay outlined. Options come from the shared core choice models so
+ * every selector renders the same set and labels.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun <T> SingleChoiceChips(
+    options: List<T>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    label: (T) -> String,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for (option in options) {
+            val isSelected = option == selected
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelect(option) },
+                label = { Text(label(option)) },
+                leadingIcon = if (isSelected) {
+                    {
+                        Icon(
+                            imageVector = Icons.Filled.Done,
+                            contentDescription = null,
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    }
+                } else {
+                    null
+                },
+            )
+        }
+    }
+}
 
 /** Circular avatar rendering the profile's avatar string (emoji) or a fallback initial. */
 @Composable

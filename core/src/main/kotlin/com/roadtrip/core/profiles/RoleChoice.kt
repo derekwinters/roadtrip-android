@@ -15,4 +15,7 @@ object RoleChoices {
         RoleChoice(Role.KID, "Kid"),
         RoleChoice(Role.PARENT, "Parent"),
     )
+
+    /** Display label for [role]. */
+    fun labelFor(role: Role): String = all.first { it.role == role }.label
 }
