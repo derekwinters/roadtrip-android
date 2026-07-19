@@ -101,6 +101,7 @@ class ConfigForm(
             minStopDurationMin = edited.minStopDurationMin.takeIf { it != server.minStopDurationMin },
             arrivalRadiusM = edited.arrivalRadiusM.takeIf { it != server.arrivalRadiusM },
             cityRadiusKm = edited.cityRadiusKm.takeIf { it != server.cityRadiusKm },
+            openProfileCreation = edited.openProfileCreation.takeIf { it != server.openProfileCreation },
         )
     }
 

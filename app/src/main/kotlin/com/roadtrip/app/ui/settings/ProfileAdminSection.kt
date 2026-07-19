@@ -14,9 +14,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.Avatar
+import com.roadtrip.core.api.ConfigPatch
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.ProfilePatch
 import com.roadtrip.core.common.Role
@@ -72,6 +75,7 @@ fun ProfileAdminSection(container: AppContainer) {
             Text("Add profile")
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        OpenCreationSwitch(container)
     }
 
     fun refreshProfiles() {
@@ -138,6 +142,52 @@ fun ProfileAdminSection(container: AppContainer) {
             },
         )
     }
+}
+
+/**
+ * "Anyone can add family members" — the `open_profile_creation` config flag (ANDSET-006,
+ * backend CFG-006/PRO-009). Applied immediately via PUT /api/config; a failed apply
+ * reverts the switch to the last known server value and shows the reason (ANDSET-002).
+ */
+@Composable
+private fun OpenCreationSwitch(container: AppContainer) {
+    val scope = rememberCoroutineScope()
+    var openCreation by remember { mutableStateOf<Boolean?>(null) }
+    var toggleError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        openCreation = withContext(Dispatchers.IO) {
+            runCatching { container.api.getConfig().openProfileCreation }.getOrNull()
+        }
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Text("Anyone can add family members", modifier = Modifier.weight(1f))
+        Switch(
+            checked = openCreation == true,
+            enabled = openCreation != null,
+            onCheckedChange = { want ->
+                openCreation = want
+                toggleError = null
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching { container.api.putConfig(ConfigPatch(openProfileCreation = want)) }
+                    }
+                    result.fold(
+                        onSuccess = { openCreation = it.openProfileCreation },
+                        onFailure = {
+                            openCreation = !want // revert to the last known server value
+                            toggleError = it.message ?: "Could not change the setting"
+                        },
+                    )
+                }
+            },
+        )
+    }
+    toggleError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 }
 
 @Composable

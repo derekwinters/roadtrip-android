@@ -45,6 +45,8 @@ data class Config(
     @SerialName("min_stop_duration_min") val minStopDurationMin: Double,
     @SerialName("arrival_radius_m") val arrivalRadiusM: Double,
     @SerialName("city_radius_km") val cityRadiusKm: Double,
+    // Default matches CFG-006 so responses from servers predating the key still parse.
+    @SerialName("open_profile_creation") val openProfileCreation: Boolean = true,
 )
 
 @Serializable
@@ -54,6 +56,7 @@ data class ConfigPatch(
     @SerialName("min_stop_duration_min") val minStopDurationMin: Double? = null,
     @SerialName("arrival_radius_m") val arrivalRadiusM: Double? = null,
     @SerialName("city_radius_km") val cityRadiusKm: Double? = null,
+    @SerialName("open_profile_creation") val openProfileCreation: Boolean? = null,
 )
 
 @Serializable

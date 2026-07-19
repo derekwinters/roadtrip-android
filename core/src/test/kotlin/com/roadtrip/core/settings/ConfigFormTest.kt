@@ -63,6 +63,23 @@ class ConfigFormTest {
     }
 
     @Test
+    fun `open profile creation toggles through the config form ANDSET-006`() = runTest {
+        val form = ConfigForm(api, Role.PARENT)
+        form.load()
+        assertEquals(true, form.values?.openProfileCreation) // server default (CFG-006)
+
+        form.edit { it.copy(openProfileCreation = false) }
+        assertTrue(form.isDirty)
+        assertTrue(form.validationErrors().isEmpty()) // booleans have no bounds
+        assertEquals(ConfigPatch(openProfileCreation = false), form.pendingPatch())
+
+        val saved = assertIs<SaveResult.Saved>(form.save())
+        assertEquals(false, saved.config.openProfileCreation)
+        assertEquals(false, api.config.openProfileCreation) // PUT actually hit the server
+        assertFalse(form.isDirty)
+    }
+
+    @Test
     fun `an offline save restores the last known server values with the reason ANDSET-002`() = runTest {
         val form = ConfigForm(api, Role.PARENT)
         form.load()

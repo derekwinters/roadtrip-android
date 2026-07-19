@@ -143,6 +143,50 @@ class ProfilePickerTest {
     }
 
     @Test
+    fun `add-member creates the chosen role with no avatar and signs in AND-010`() = runTest {
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runAddMember("Cousin", Role.KID)
+
+        val created = (result as AddMemberResult.SignedIn).profile
+        val request = api.createProfileRequests.single()
+        assertEquals(Role.KID, request.role)
+        assertNull(request.avatar) // no avatar input anywhere — the server assigns its default
+        assertEquals("Cousin", created.name)
+        assertEquals(Role.KID, created.role)
+        assertEquals(created, picker.selected())
+    }
+
+    @Test
+    fun `add-member surfaces the server's own rejection message AND-010`() = runTest {
+        // A parent turned creation off (backend PRO-009): the server's message says so.
+        api.createProfileError = ApiException(
+            401,
+            "unauthenticated",
+            "Profile creation is turned off — sign in as a parent to add family members",
+        )
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runAddMember("Cousin", Role.KID)
+
+        val failed = result as AddMemberResult.Failed
+        assertTrue(failed.message.contains("turned off"), failed.message)
+        assertNull(picker.selected())
+    }
+
+    @Test
+    fun `add-member transport failures show an offline message AND-010`() = runTest {
+        api.offline = true
+        val picker = ProfilePicker(api, store)
+
+        val result = picker.runAddMember("Cousin", Role.PARENT)
+
+        val failed = result as AddMemberResult.Failed
+        assertTrue(failed.message.contains("connection", ignoreCase = true), failed.message)
+        assertNull(picker.selected())
+    }
+
+    @Test
     fun `non-401 server rejections surface their own message AND-009`() = runTest {
         api.createProfileError = ApiException(400, "validation", "name: String must contain at most 40 character(s)")
         val picker = ProfilePicker(api, store)

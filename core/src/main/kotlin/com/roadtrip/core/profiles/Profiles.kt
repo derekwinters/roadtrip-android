@@ -62,6 +62,28 @@ class ProfilePicker(
         return FirstRunCreateResult.SignedIn(created)
     }
 
+    /**
+     * Grid "Add family member" (AND-010): creates a profile with the chosen role — no
+     * avatar, the server assigns its default — and signs in as them. The call runs
+     * before sign-in, so the server's `open_profile_creation` flag (PRO-009) decides
+     * whether it succeeds; a rejection surfaces the server's own message, which is
+     * actionable by contract (PRO-008/PRO-009 — e.g. "creation is turned off, sign in
+     * as a parent"). Transport failures keep the human offline message.
+     */
+    suspend fun runAddMember(name: String, role: Role): AddMemberResult {
+        val created = try {
+            api.createProfile(name, avatar = null, role = role)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ApiException) {
+            return AddMemberResult.Failed(e.message ?: CREATE_FAILED_MESSAGE)
+        } catch (e: IOException) {
+            return AddMemberResult.Failed(OFFLINE_MESSAGE)
+        }
+        store.set(created)
+        return AddMemberResult.SignedIn(created)
+    }
+
     private suspend fun recoverFromClosedBootstrap(): FirstRunCreateResult = try {
         val profiles = load()
         if (profiles.isEmpty()) {
@@ -85,6 +107,15 @@ class ProfilePicker(
                 "Update the server, then try again."
         const val CREATE_FAILED_MESSAGE = "Could not create the profile"
     }
+}
+
+/** Outcome of the grid's "Add family member" attempt (AND-010). */
+sealed class AddMemberResult {
+    /** Created and signed in — leave the picker for the app proper. */
+    data class SignedIn(val profile: Profile) : AddMemberResult()
+
+    /** Human-readable, retryable failure — the dialog stays up (AND-010). */
+    data class Failed(val message: String) : AddMemberResult()
 }
 
 /** Outcome of the wizard's create attempt (AND-007, AND-009). */
