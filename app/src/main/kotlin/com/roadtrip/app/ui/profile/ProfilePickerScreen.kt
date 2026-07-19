@@ -17,11 +17,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.Role
+import com.roadtrip.core.profiles.RoleChoices
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.profiles.AddMemberResult
 import com.roadtrip.core.profiles.FirstRunCreateResult
@@ -273,18 +276,17 @@ private fun AddMemberDialog(
                     singleLine = true,
                 )
                 Spacer(Modifier.height(8.dp))
-                Row {
-                    FilterChip(
-                        selected = role == Role.KID,
-                        onClick = { role = Role.KID },
-                        label = { Text("Kid") },
-                        modifier = Modifier.padding(end = 4.dp),
-                    )
-                    FilterChip(
-                        selected = role == Role.PARENT,
-                        onClick = { role = Role.PARENT },
-                        label = { Text("Parent") },
-                    )
+                // Kid/Parent as an unmistakable single-choice SegmentedButton set (AND-013),
+                // shared with profile admin via the core RoleChoices model.
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    RoleChoices.all.forEachIndexed { index, choice ->
+                        SegmentedButton(
+                            selected = role == choice.role,
+                            onClick = { role = choice.role },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = RoleChoices.all.size),
+                            label = { Text(choice.label) },
+                        )
+                    }
                 }
                 error?.let {
                     Spacer(Modifier.height(8.dp))

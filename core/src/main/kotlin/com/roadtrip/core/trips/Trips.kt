@@ -74,6 +74,15 @@ object TripStateReducer {
     fun viewedTrip(trips: List<Trip>): Trip? =
         trips.firstOrNull { it.status == TripStatus.ACTIVE } ?: mostRecentlyEnded(trips)
 
+    /**
+     * The active trip's name for the top app bar's persistent-context overline (ANDTRIP-009):
+     * the trip name while one is active, null between trips / first launch / while browsing a
+     * past trip read-only (that context stays in the TripStrip banner instead). Keyed on the
+     * banner: a null banner means a trip is running, so `viewedTrip` is that active trip.
+     */
+    fun activeTripBarLabel(state: TripHomeState): String? =
+        if (state.bannerText == null) state.viewedTrip?.name else null
+
     fun reduce(trips: List<Trip>, role: Role, online: Boolean): TripHomeState {
         val active = trips.firstOrNull { it.status == TripStatus.ACTIVE }
         val lastEnded = mostRecentlyEnded(trips)
