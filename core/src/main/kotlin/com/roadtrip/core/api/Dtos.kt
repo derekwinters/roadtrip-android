@@ -416,6 +416,10 @@ data class Game(
     val view: JsonElement? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("finished_at") val finishedAt: String? = null,
+    // Server-redacted masked hangman progress (guessed letters revealed, '_' for unguessed,
+    // spaces preserved) for active/finished hangman games; absent for other types / open games
+    // (roadtrip-backend GAME-001). Additive/optional — ignoreUnknownKeys keeps older servers OK.
+    @SerialName("hangman_display") val hangmanDisplay: String? = null,
 )
 
 @Serializable

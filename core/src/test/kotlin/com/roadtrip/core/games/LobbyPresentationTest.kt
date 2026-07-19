@@ -1,6 +1,7 @@
 package com.roadtrip.core.games
 
 import com.roadtrip.core.api.GameStatus
+import com.roadtrip.core.api.GameType
 import com.roadtrip.core.testing.TestData
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -54,6 +55,68 @@ class LobbyPresentationTest {
             id = "g2", createdBy = me, opponentId = "p-ghost", status = GameStatus.ACTIVE,
         )
         assertEquals("Your Chess", GameLobbyLabeler.myGameTitle(unknownOpponent, me, "Chess", names))
+    }
+
+    @Test
+    fun `hangman titles append the masked progress ANDGAME-019`() {
+        val open = TestData.game(
+            id = "g", type = GameType.HANGMAN, createdBy = derek,
+            status = GameStatus.ACTIVE, hangmanDisplay = "E_E___NT",
+        )
+        assertEquals(
+            "Derek's Hangman — E_E___NT",
+            GameLobbyLabeler.creatorTitle(open, "Hangman", names),
+        )
+        // Same masked suffix when it's one of my own hangman games.
+        val mine = TestData.game(
+            id = "g2", type = GameType.HANGMAN, createdBy = me, opponentId = derek,
+            status = GameStatus.ACTIVE, hangmanDisplay = "_ _ _",
+        )
+        assertEquals(
+            "Hangman vs Derek — _ _ _",
+            GameLobbyLabeler.myGameTitle(mine, me, "Hangman", names),
+        )
+    }
+
+    @Test
+    fun `a long hangman mask is truncated at the cap with an ellipsis ANDGAME-019`() {
+        val long = "A_______ ______ B__ ____ ___"
+        val game = TestData.game(
+            id = "g", type = GameType.HANGMAN, createdBy = derek,
+            status = GameStatus.ACTIVE, hangmanDisplay = long,
+        )
+        val title = GameLobbyLabeler.creatorTitle(game, "Hangman", names)
+        val suffix = title.substringAfter(" — ")
+        assertTrue(suffix.length <= GameLobbyLabeler.HANGMAN_MASK_CAP, "suffix too long: $suffix")
+        assertTrue(suffix.endsWith("…"), "expected ellipsis: $suffix")
+        // Only the leading, already-redacted portion is shown — nothing beyond the mask.
+        assertTrue(long.startsWith(suffix.dropLast(1)))
+    }
+
+    @Test
+    fun `non-hangman games are unaffected by the mask suffix ANDGAME-019`() {
+        // A stray display on a non-hangman game must not leak into the title.
+        val chess = TestData.game(
+            id = "g", type = GameType.CHESS, createdBy = derek,
+            status = GameStatus.ACTIVE, hangmanDisplay = "SHOULD_NOT_SHOW",
+        )
+        assertEquals("Derek's Chess", GameLobbyLabeler.creatorTitle(chess, "Chess", names))
+    }
+
+    @Test
+    fun `an open hangman game with no display keeps the plain creator title ANDGAME-019`() {
+        val open = TestData.game(
+            id = "g", type = GameType.HANGMAN, createdBy = derek,
+            status = GameStatus.OPEN, hangmanDisplay = null,
+        )
+        assertEquals("Derek's Hangman", GameLobbyLabeler.creatorTitle(open, "Hangman", names))
+
+        // A blank string is treated the same as absent.
+        val blank = TestData.game(
+            id = "g2", type = GameType.HANGMAN, createdBy = derek,
+            status = GameStatus.ACTIVE, hangmanDisplay = "   ",
+        )
+        assertEquals("Derek's Hangman", GameLobbyLabeler.creatorTitle(blank, "Hangman", names))
     }
 
     @Test

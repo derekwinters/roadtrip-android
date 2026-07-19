@@ -129,6 +129,7 @@ object TestData {
         opponentId: String? = null,
         moveCount: Int = 0,
         turn: String? = null,
+        hangmanDisplay: String? = null,
     ): Game = Game(
         id = id,
         gameType = type,
@@ -139,5 +140,6 @@ object TestData {
         opponentId = opponentId,
         moveCount = moveCount,
         turn = turn,
+        hangmanDisplay = hangmanDisplay,
     )
 }
