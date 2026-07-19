@@ -31,9 +31,8 @@ import java.util.Locale
 
 /**
  * Trip screen (ANDSET-004): whole-trip summary (miles, hours wall/moving, states, stops,
- * games, wins and journal posts per person) plus per-leg summaries. A leg-arrival deep
- * link highlights that leg (ANDJRNL-004). Past trips are reachable through the history
- * browser (ANDTRIP-003).
+ * games) plus per-leg summaries. A leg-arrival deep link highlights that leg
+ * (ANDJRNL-004). Past trips are reachable through the history browser (ANDTRIP-003).
  */
 @Composable
 fun TripScreen(
@@ -94,18 +93,6 @@ fun TripScreen(
                                 "${state.summary.gamesPlayed} games",
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        if (state.summary.winsByName.isNotEmpty()) {
-                            Text("Game wins", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-                            for ((name, wins) in state.summary.winsByName) {
-                                Text("$name: $wins", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                        if (state.summary.journalPostsByName.isNotEmpty()) {
-                            Text("Journal posts", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-                            for ((name, count) in state.summary.journalPostsByName) {
-                                Text("$name: $count", style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
                     }
                 }
             }

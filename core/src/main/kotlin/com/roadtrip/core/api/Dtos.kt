@@ -335,8 +335,6 @@ data class TripSummary(
     @SerialName("states_count") val statesCount: Int,
     @SerialName("stop_count") val stopCount: Int,
     @SerialName("games_played") val gamesPlayed: Int,
-    @SerialName("wins_by_profile") val winsByProfile: Map<String, Int> = emptyMap(),
-    @SerialName("journal_posts_by_profile") val journalPostsByProfile: Map<String, Int> = emptyMap(),
 )
 
 // ---- license plate bingo (GET /api/bingo, docs/spec/10-bingo.md) -----------------------

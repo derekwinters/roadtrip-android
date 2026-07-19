@@ -35,8 +35,6 @@ class TripScreenStateTest {
         val summary = TripSummary(
             miles = 812.0, wallMinutes = 900.0, movingMinutes = 720.0,
             statesCount = 5, stopCount = 6, gamesPlayed = 9,
-            winsByProfile = mapOf(TestData.kid.id to 5, TestData.parent.id to 4),
-            journalPostsByProfile = mapOf(TestData.kid.id to 12),
         )
 
         val screen = TripReducer.reduce(legs, summary, profiles)
@@ -61,20 +59,5 @@ class TripScreenStateTest {
         assertEquals(5, screen.summary.statesCount)
         assertEquals(6, screen.summary.stopCount)
         assertEquals(9, screen.summary.gamesPlayed)
-    }
-
-    @Test
-    fun `resolves games won and journal counts per person by name ANDSET-004`() {
-        val summary = TripSummary(
-            miles = 0.0, wallMinutes = 0.0, movingMinutes = 0.0,
-            statesCount = 0, stopCount = 0, gamesPlayed = 3,
-            winsByProfile = mapOf(TestData.kid.id to 2, "p-unknown" to 1),
-            journalPostsByProfile = mapOf(TestData.parent.id to 7),
-        )
-
-        val screen = TripReducer.reduce(emptyList(), summary, profiles)
-
-        assertEquals(mapOf("Maya" to 2, "p-unknown" to 1), screen.summary.winsByName)
-        assertEquals(mapOf("Derek" to 7), screen.summary.journalPostsByName)
     }
 }

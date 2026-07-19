@@ -23,8 +23,6 @@ data class TripSummaryRow(
     val statesCount: Int,
     val stopCount: Int,
     val gamesPlayed: Int,
-    val winsByName: Map<String, Int>,
-    val journalPostsByName: Map<String, Int>,
 )
 
 data class TripScreenState(
@@ -39,8 +37,6 @@ object TripReducer {
         summary: TripSummary,
         profilesById: Map<String, Profile> = emptyMap(),
     ): TripScreenState {
-        fun nameOf(profileId: String): String = profilesById[profileId]?.name ?: profileId
-
         return TripScreenState(
             legs = legs.sortedBy { it.legIndex }.map { leg ->
                 LegRow(
@@ -62,8 +58,6 @@ object TripReducer {
                 statesCount = summary.statesCount,
                 stopCount = summary.stopCount,
                 gamesPlayed = summary.gamesPlayed,
-                winsByName = summary.winsByProfile.mapKeys { nameOf(it.key) },
-                journalPostsByName = summary.journalPostsByProfile.mapKeys { nameOf(it.key) },
             ),
         )
     }
