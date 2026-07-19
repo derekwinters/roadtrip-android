@@ -156,7 +156,8 @@ fun GamesScreen(
                 modifier = Modifier.fillMaxSize(),
                 // Bottom inset so the last row's action clears the FAB in every section (ANDGAME-011).
                 contentPadding = PaddingValues(
-                    horizontal = 16.dp,
+                    start = 16.dp,
+                    end = 16.dp,
                     bottom = GamesLobbyLayout.FAB_CLEARANCE_DP.dp,
                 ),
             ) {
