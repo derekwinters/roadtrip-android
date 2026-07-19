@@ -17,6 +17,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +41,7 @@ import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.common.SystemClock
+import com.roadtrip.core.profiles.AddMemberResult
 import com.roadtrip.core.profiles.FirstRunCreateResult
 import com.roadtrip.core.profiles.ProfilePicker
 import com.roadtrip.core.profiles.ProfilePickerLoader
@@ -63,6 +65,7 @@ fun ProfilePickerScreen(container: AppContainer) {
     var state by remember { mutableStateOf<ProfilePickerState>(ProfilePickerState.Loading) }
     var retryTick by remember { mutableStateOf(0) }
     var showServerDialog by remember { mutableStateOf(false) }
+    var showAddMember by remember { mutableStateOf(false) }
     val serverUrl by container.settings.serverUrl.collectAsState()
     val online by container.onlineMonitor.online.collectAsState()
 
@@ -109,11 +112,26 @@ fun ProfilePickerScreen(container: AppContainer) {
                     onEditServer = { showServerDialog = true },
                 )
                 current is ProfilePickerState.Loading -> CircularProgressIndicator()
-                // Select-only avatar grid: no create affordance once profiles exist (AND-007).
-                current is ProfilePickerState.Grid -> ProfileGrid(container, current.profiles)
+                // Avatar grid plus "Add family member" (AND-007/AND-010): whether the
+                // pre-sign-in create succeeds is the server's call (open_profile_creation).
+                current is ProfilePickerState.Grid -> {
+                    ProfileGrid(container, current.profiles)
+                    Spacer(Modifier.height(16.dp))
+                    TextButton(onClick = { showAddMember = true }) {
+                        Text("Add family member")
+                    }
+                }
                 else -> {}
             }
         }
+    }
+
+    if (showAddMember) {
+        AddMemberDialog(
+            picker = picker,
+            container = container,
+            onDismiss = { showAddMember = false },
+        )
     }
 
     if (showServerDialog) {
@@ -223,6 +241,85 @@ private fun ProfileGrid(container: AppContainer, profiles: List<Profile>) {
             }
         }
     }
+}
+
+/**
+ * "Add family member" from the picker grid (AND-010): name + role, no avatar (the server
+ * assigns its default), signs in as the new profile. Runs before sign-in, so the server's
+ * `open_profile_creation` flag decides — rejections show the server's own actionable
+ * message and keep the dialog retryable.
+ */
+@Composable
+private fun AddMemberDialog(
+    picker: ProfilePicker,
+    container: AppContainer,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf(Role.KID) }
+    var creating by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add family member") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row {
+                    FilterChip(
+                        selected = role == Role.KID,
+                        onClick = { role = Role.KID },
+                        label = { Text("Kid") },
+                        modifier = Modifier.padding(end = 4.dp),
+                    )
+                    FilterChip(
+                        selected = role == Role.PARENT,
+                        onClick = { role = Role.PARENT },
+                        label = { Text("Parent") },
+                    )
+                }
+                error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank() && !creating,
+                onClick = {
+                    creating = true
+                    error = null
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            picker.runAddMember(name.trim(), role)
+                        }
+                        when (result) {
+                            // Signed in as the new member; the picker leaves composition.
+                            is AddMemberResult.SignedIn -> container.selectProfile(result.profile)
+                            is AddMemberResult.Failed -> {
+                                creating = false
+                                error = result.message
+                            }
+                        }
+                    }
+                },
+            ) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 /**

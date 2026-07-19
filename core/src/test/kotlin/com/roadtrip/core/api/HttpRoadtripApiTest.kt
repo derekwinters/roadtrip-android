@@ -61,6 +61,19 @@ class HttpRoadtripApiTest {
     }
 
     @Test
+    fun `open_profile_creation round-trips the boolean contract ANDSET-006`() = runTest {
+        enqueueJson(
+            """{"ping_interval_s":60,"stop_radius_m":100,"min_stop_duration_min":10,
+               "arrival_radius_m":800,"city_radius_km":10,"open_profile_creation":false}""",
+        )
+        val config = api().putConfig(ConfigPatch(openProfileCreation = false))
+        assertEquals(false, config.openProfileCreation)
+
+        val body = server.takeRequest()
+        assertEquals("""{"open_profile_creation":false}""", body.body.readUtf8())
+    }
+
+    @Test
     fun `serializes bodies and query strings with the snake_case contract names AND-002`() = runTest {
         enqueueJson("""{"results":[{"event_id":"e-1","status":"accepted","seq":4}]}""")
         enqueueJson(

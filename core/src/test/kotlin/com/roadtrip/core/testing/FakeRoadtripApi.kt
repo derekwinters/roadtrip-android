@@ -143,6 +143,7 @@ class FakeRoadtripApi : RoadtripApi {
             minStopDurationMin = patch.minStopDurationMin ?: config.minStopDurationMin,
             arrivalRadiusM = patch.arrivalRadiusM ?: config.arrivalRadiusM,
             cityRadiusKm = patch.cityRadiusKm ?: config.cityRadiusKm,
+            openProfileCreation = patch.openProfileCreation ?: config.openProfileCreation,
         )
         return config
     }
