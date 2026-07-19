@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -50,6 +51,7 @@ import com.roadtrip.core.games.MoveOutcome
 import com.roadtrip.core.games.PlayerLegend
 import com.roadtrip.core.games.ReplayEngine
 import com.roadtrip.core.games.ReplaySession
+import com.roadtrip.core.games.ResignPrompts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -93,6 +95,10 @@ fun BoardScreen(
     }
     // The move awaiting an explicit Confirm when the toggle is on (null == nothing staged).
     var stagedMove by remember { mutableStateOf<JsonElement?>(null) }
+
+    // Resigning / host-ending is destructive and ALWAYS confirmed before the resign request is
+    // issued (ANDGAME-023) — this is never a toggle. True while the confirmation dialog is open.
+    var resignPending by remember { mutableStateOf(false) }
 
     // profileId -> display name for the player-identity legend (ANDGAME-020); same profiles-cache
     // read the lobby uses (ANDGAME-009), with a "Someone" fallback resolved inside PlayerLegend.
@@ -242,6 +248,16 @@ fun BoardScreen(
         selectedSquare = null
     }
 
+    // ANDGAME-023: the resign request fires ONLY here, from an explicit confirm (mirrors the pure
+    // ResignConfirmation seam's confirm -> onResign). Opening/cancelling the dialog sends nothing.
+    fun performResign() {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { container.api.resign(gameId) }
+            }.onSuccess { game = it }
+        }
+    }
+
     fun tapSquare(square: String, occupied: Boolean) {
         val from = selectedSquare
         when {
@@ -388,14 +404,26 @@ fun BoardScreen(
                 )
                 if (endControl != EndControl.NONE && gate.enabled) {
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = {
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                runCatching { container.api.resign(gameId) }
-                            }.onSuccess { game = it }
-                        }
-                    }) {
-                        Text(if (endControl == EndControl.END_GAME) "End game" else "Resign")
+                    // ANDGAME-023: tapping the control opens an always-on confirmation; the resign
+                    // endpoint is only hit on explicit confirm. Cancel leaves the game untouched.
+                    TextButton(onClick = { resignPending = true }) {
+                        Text(ResignPrompts.confirmLabel(endControl))
+                    }
+                    if (resignPending) {
+                        AlertDialog(
+                            onDismissRequest = { resignPending = false },
+                            title = { Text(ResignPrompts.title(endControl)) },
+                            text = { Text(ResignPrompts.body(endControl)) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    resignPending = false
+                                    performResign()
+                                }) { Text(ResignPrompts.confirmLabel(endControl)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { resignPending = false }) { Text("Cancel") }
+                            },
+                        )
                     }
                 }
             }
