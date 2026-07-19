@@ -42,6 +42,43 @@ interface PermissionRequester {
     suspend fun requestLocationPermissions(): Boolean
 }
 
+/**
+ * App-module port around the Doze/OEM battery-optimization exemption prompt
+ * (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, ANDLOC-011). Called only from the parent enable
+ * flow, so kid profiles never reach it (ANDLOC-005).
+ */
+interface BatteryOptimizationExempter {
+    /** Ask the OS to exempt the app from battery optimization; a no-op if already exempt. */
+    fun requestExemptionIfNeeded()
+}
+
+/**
+ * Shared "should the tracker be running right now?" predicate for every restart path
+ * (ANDLOC-009/010): a parent left the tracker enabled on this device AND a trip is active —
+ * the exact condition the app uses to restore the service on relaunch. Reused by the
+ * task-removed self-restart and the `BOOT_COMPLETED` receiver so all three paths agree
+ * without duplicating the rule. `trackerMayRun` stays permissive until trips are known
+ * (its caller returns true when the active-trip state is unknown).
+ */
+object TrackerRestartPolicy {
+    fun shouldRun(trackerEnabled: Boolean, trackerMayRun: Boolean): Boolean =
+        trackerEnabled && trackerMayRun
+}
+
+/**
+ * Doze fallback alarm mode (ANDLOC-012). While a trip is active the fallback tick must be
+ * exact so it cannot coalesce/drift under Doze (03-location.md), but exact allow-while-idle
+ * alarms are permission-gated on API 31+ — so use the exact form only when both a trip is
+ * active and the exact-alarm permission is held, and fall back to the inexact form
+ * otherwise.
+ */
+object DozeAlarmPolicy {
+    enum class Mode { EXACT, INEXACT }
+
+    fun mode(tripActive: Boolean, canScheduleExact: Boolean): Mode =
+        if (tripActive && canScheduleExact) Mode.EXACT else Mode.INEXACT
+}
+
 sealed class EnableResult {
     object Enabled : EnableResult()
     object PermissionDenied : EnableResult()
@@ -57,6 +94,7 @@ sealed class EnableResult {
 class TrackerEnabler(
     private val permissions: PermissionRequester,
     private val config: TrackerConfigStore? = null,
+    private val batteryOptimization: BatteryOptimizationExempter? = null,
 ) {
     suspend fun requestEnable(profile: Profile): EnableResult {
         when (val gate = TrackerGate.evaluate(profile.role)) {
@@ -66,6 +104,9 @@ class TrackerEnabler(
         // Only a parent ever gets here (ANDLOC-003).
         return if (permissions.requestLocationPermissions()) {
             config?.setEnabledBy(profile.id)
+            // Parent-only: keep the foreground service alive under Doze/OEM battery managers
+            // (ANDLOC-011). Kids never reach this point (ANDLOC-005).
+            batteryOptimization?.requestExemptionIfNeeded()
             EnableResult.Enabled
         } else {
             EnableResult.PermissionDenied

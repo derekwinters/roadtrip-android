@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import com.roadtrip.app.location.TrackerService
+import com.roadtrip.core.location.TrackerRestartPolicy
 import com.roadtrip.app.notifications.NavTargetExtras
 import com.roadtrip.app.ui.AppShell
 import com.roadtrip.app.ui.profile.ProfilePickerScreen
@@ -68,7 +69,11 @@ class MainActivity : ComponentActivity() {
         // Restore the tracker after a relaunch if a parent left it enabled (ANDLOC-006).
         // The signed-in profile is irrelevant: pings stay attributed to the enabling
         // parent (ANDLOC-008), and the tracker never runs between trips (09-trips.md).
-        if (container.settings.trackerEnabled.value && container.trackerMayRun()) {
+        if (TrackerRestartPolicy.shouldRun(
+                trackerEnabled = container.settings.trackerEnabled.value,
+                trackerMayRun = container.trackerMayRun(),
+            )
+        ) {
             TrackerService.start(this)
         }
     }
