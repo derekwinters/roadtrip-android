@@ -8,3 +8,6 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Claude Code agent worktrees (ephemeral; never committed)
+.claude/worktrees/
