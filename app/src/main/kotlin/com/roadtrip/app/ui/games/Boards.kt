@@ -5,38 +5,48 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roadtrip.core.games.BoardMetrics
+import com.roadtrip.core.games.BoardPieces
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.PieceInk
 
 /**
  * Board renderers for the five games (ANDGAME-004), driven purely by core [BoardState]
  * snapshots. Input is reported as taps; all rule arbitration stays on the server.
+ *
+ * Grid boards bound themselves to the smaller of the available width/height so the whole
+ * board fits without scrolling on tablet, and piece glyphs scale to a fraction of their
+ * square (ANDGAME-009). Piece glyph/ink come from the pure core [BoardPieces] mapping
+ * (ANDGAME-010); winning tiles are highlighted from the core win-line indices (ANDGAME-011).
  */
 
 private val LIGHT_SQUARE = Color(0xFFF0D9B5)
 private val DARK_SQUARE = Color(0xFFB58863)
-
-private val CHESS_GLYPHS = mapOf(
-    "wK" to "♔", "wQ" to "♕", "wR" to "♖", "wB" to "♗", "wN" to "♘", "wP" to "♙",
-    "bK" to "♚", "bQ" to "♛", "bR" to "♜", "bB" to "♝", "bN" to "♞", "bP" to "♟",
-)
 
 @Composable
 fun ChessBoardView(
@@ -46,8 +56,8 @@ fun ChessBoardView(
     onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
-        pieceAt = { square -> CHESS_GLYPHS[board.squares[square]] },
-        pieceColorAt = { null },
+        pieceAt = { square -> BoardPieces.chessGlyph(board.squares[square]) },
+        inkAt = { square -> BoardPieces.chessInk(board.squares[square]) },
         selectedSquare = selectedSquare,
         enabled = enabled,
         onSquareTap = onSquareTap,
@@ -62,66 +72,97 @@ fun CheckersBoardView(
     onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
-        pieceAt = { square ->
-            when (board.squares[square]) {
-                "w" -> "●"
-                "r" -> "●"
-                "W" -> "♛"
-                "R" -> "♛"
-                else -> null
-            }
-        },
-        pieceColorAt = { square ->
-            when (board.squares[square]) {
-                "w", "W" -> Color.White
-                "r", "R" -> Color(0xFFC62828)
-                else -> null
-            }
-        },
+        pieceAt = { square -> BoardPieces.checkersGlyph(board.squares[square]) },
+        inkAt = { square -> BoardPieces.checkersInk(board.squares[square]) },
         selectedSquare = selectedSquare,
         enabled = enabled,
         onSquareTap = onSquareTap,
     )
 }
 
+/** A board slot bounded to the largest square that fits both dimensions (ANDGAME-009). */
+@Composable
+private fun BoardBox(content: @Composable BoxScope.() -> Unit) {
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
+        // In a bounded slot maxHeight caps the board; in a scroll (maxHeight = Infinity)
+        // it falls back to the available width, i.e. today's fill-width behavior.
+        val side = minOf(maxWidth, maxHeight)
+        Box(modifier = Modifier.size(side), contentAlignment = Alignment.Center, content = content)
+    }
+}
+
+private data class PieceStyle(val color: Color, val outline: Boolean)
+
+private fun PieceInk.toStyle(): PieceStyle = when (this) {
+    // White fill with a dark outline so it reads on the light square (ANDGAME-010).
+    PieceInk.WHITE_OUTLINED -> PieceStyle(Color.White, outline = true)
+    PieceInk.BLACK -> PieceStyle(Color(0xFF1A1A1A), outline = false)
+    PieceInk.RED -> PieceStyle(Color(0xFFC62828), outline = false)
+}
+
+/** A piece glyph sized to ~70% of its square (ANDGAME-009), tinted/outlined by ink. */
+@Composable
+private fun PieceGlyph(glyph: String, ink: PieceInk?) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val fontSize = with(LocalDensity.current) {
+            (minOf(maxWidth, maxHeight) * BoardMetrics.PIECE_GLYPH_FRACTION).toSp()
+        }
+        val style = ink?.toStyle()
+        val textStyle = if (style?.outline == true) {
+            LocalTextStyle.current.copy(
+                shadow = Shadow(color = Color(0xFF2B2B2B), offset = Offset.Zero, blurRadius = 8f),
+            )
+        } else {
+            LocalTextStyle.current
+        }
+        Text(
+            text = glyph,
+            fontSize = fontSize,
+            color = style?.color ?: Color.Unspecified,
+            style = textStyle,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
 @Composable
 private fun EightByEight(
     pieceAt: (String) -> String?,
-    pieceColorAt: (String) -> Color?,
+    inkAt: (String) -> PieceInk?,
     selectedSquare: String?,
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
-        for (rank in 8 downTo 1) {
-            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                for ((fileIndex, file) in ('a'..'h').withIndex()) {
-                    val square = "$file$rank"
-                    // a1 dark, h1 light — matches the core checkers piece layout.
-                    val darkSquare = (fileIndex + rank) % 2 == 1
-                    val background = if (darkSquare) DARK_SQUARE else LIGHT_SQUARE
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .background(background)
-                            .then(
-                                if (square == selectedSquare) {
-                                    Modifier.border(3.dp, MaterialTheme.colorScheme.primary)
-                                } else {
-                                    Modifier
-                                },
-                            )
-                            .clickable(enabled = enabled) { onSquareTap(square) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        val glyph = pieceAt(square)
-                        if (glyph != null) {
-                            val tint = pieceColorAt(square)
-                            if (tint != null) {
-                                Text(glyph, fontSize = 24.sp, color = tint)
-                            } else {
-                                Text(glyph, fontSize = 24.sp)
+    BoardBox {
+        Column(modifier = Modifier.fillMaxSize()) {
+            for (rank in 8 downTo 1) {
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    for ((fileIndex, file) in ('a'..'h').withIndex()) {
+                        val square = "$file$rank"
+                        // a1 dark, h1 light — matches the core checkers piece layout.
+                        val darkSquare = (fileIndex + rank) % 2 == 1
+                        val background = if (darkSquare) DARK_SQUARE else LIGHT_SQUARE
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxSize()
+                                .background(background)
+                                .then(
+                                    if (square == selectedSquare) {
+                                        Modifier.border(3.dp, MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .clickable(enabled = enabled) { onSquareTap(square) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val glyph = pieceAt(square)
+                            if (glyph != null) {
+                                PieceGlyph(glyph, inkAt(square))
                             }
                         }
                     }
@@ -137,21 +178,35 @@ fun TttBoardView(
     enabled: Boolean,
     onCellTap: (Int) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
-        for (row in 0..2) {
-            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                for (col in 0..2) {
-                    val cell = row * 3 + col
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .padding(2.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable(enabled = enabled && board.cells[cell] == null) { onCellTap(cell) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(board.cells[cell]?.toString() ?: "", fontSize = 40.sp)
+    // Finished when someone has won or every cell is filled (draw) — read as clearly over.
+    val finished = board.winningLine != null || board.cells.all { it != null }
+    BoardBox {
+        Column(modifier = Modifier.fillMaxSize()) {
+            for (row in 0..2) {
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    for (col in 0..2) {
+                        val cell = row * 3 + col
+                        val winning = board.winningLine?.contains(cell) == true
+                        val background = when {
+                            winning -> MaterialTheme.colorScheme.tertiaryContainer
+                            finished -> MaterialTheme.colorScheme.secondaryContainer
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxSize()
+                                .padding(2.dp)
+                                .background(background)
+                                .clickable(enabled = enabled && board.cells[cell] == null) {
+                                    onCellTap(cell)
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            board.cells[cell]?.let { mark ->
+                                CellMark(mark.toString(), fraction = 0.7f)
+                            }
+                        }
                     }
                 }
             }
@@ -166,34 +221,39 @@ fun UltimateBoardView(
     enabled: Boolean,
     onCellTap: (subBoard: Int, cell: Int) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
-        for (macroRow in 0..2) {
-            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                for (macroCol in 0..2) {
-                    val subIndex = macroRow * 3 + macroCol
-                    val dictated = board.nextBoard == subIndex
-                    val playable = enabled && (board.nextBoard == null || dictated) &&
-                        board.macro[subIndex] == null
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .padding(2.dp)
-                            .border(
-                                width = if (dictated) 3.dp else 1.dp,
-                                color = if (dictated) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.outline
-                                },
-                            ),
-                    ) {
-                        SubBoard(
-                            cells = board.boards[subIndex],
-                            winner = board.macro[subIndex],
-                            enabled = playable,
-                            onCellTap = { cell -> onCellTap(subIndex, cell) },
-                        )
+    BoardBox {
+        Column(modifier = Modifier.fillMaxSize()) {
+            for (macroRow in 0..2) {
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    for (macroCol in 0..2) {
+                        val subIndex = macroRow * 3 + macroCol
+                        val dictated = board.nextBoard == subIndex
+                        val macroWinning = board.macroWinningLine?.contains(subIndex) == true
+                        val playable = enabled && (board.nextBoard == null || dictated) &&
+                            board.macro[subIndex] == null
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxSize()
+                                .padding(2.dp)
+                                .border(
+                                    width = if (dictated || macroWinning) 3.dp else 1.dp,
+                                    color = when {
+                                        macroWinning -> MaterialTheme.colorScheme.tertiary
+                                        dictated -> MaterialTheme.colorScheme.primary
+                                        else -> MaterialTheme.colorScheme.outline
+                                    },
+                                ),
+                        ) {
+                            SubBoard(
+                                cells = board.boards[subIndex],
+                                winner = board.macro[subIndex],
+                                winningCells = board.boardWinningLines[subIndex],
+                                macroWinning = macroWinning,
+                                enabled = playable,
+                                onCellTap = { cell -> onCellTap(subIndex, cell) },
+                            )
+                        }
                     }
                 }
             }
@@ -205,6 +265,8 @@ fun UltimateBoardView(
 private fun SubBoard(
     cells: List<Char?>,
     winner: Char?,
+    winningCells: List<Int>?,
+    macroWinning: Boolean,
     enabled: Boolean,
     onCellTap: (Int) -> Unit,
 ) {
@@ -214,31 +276,55 @@ private fun SubBoard(
                 Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     for (col in 0..2) {
                         val cell = row * 3 + col
+                        val winning = winningCells?.contains(cell) == true
+                        val background = if (winning) {
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxSize()
                                 .padding(1.dp)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable(enabled = enabled && cells[cell] == null) { onCellTap(cell) },
+                                .background(background)
+                                .clickable(enabled = enabled && cells[cell] == null) {
+                                    onCellTap(cell)
+                                },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(cells[cell]?.toString() ?: "", fontSize = 12.sp)
+                            cells[cell]?.let { CellMark(it.toString(), fraction = 0.7f) }
                         }
                     }
                 }
             }
         }
         if (winner != null) {
+            val overlay = if (macroWinning) {
+                MaterialTheme.colorScheme.tertiaryContainer
+            } else {
+                MaterialTheme.colorScheme.primaryContainer
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)),
+                    .background(overlay.copy(alpha = 0.85f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(winner.toString(), fontSize = 28.sp)
+                CellMark(winner.toString(), fraction = 0.8f)
             }
         }
+    }
+}
+
+/** A text mark (X/O or captured winner) sized to a fraction of its cell (ANDGAME-009). */
+@Composable
+private fun CellMark(text: String, fraction: Float) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val fontSize = with(LocalDensity.current) {
+            (minOf(maxWidth, maxHeight) * fraction).toSp()
+        }
+        Text(text, fontSize = fontSize, textAlign = TextAlign.Center)
     }
 }
 

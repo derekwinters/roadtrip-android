@@ -1,5 +1,6 @@
 package com.roadtrip.app.ui.games
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -186,10 +187,11 @@ fun BoardScreen(
         }
     }
 
+    // The board is kept out of any vertical scroll region so it can bound itself to the
+    // viewport (ANDGAME-009); only the status line and controls above/below it are fixed.
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -208,43 +210,56 @@ fun BoardScreen(
                 )
                 Spacer(Modifier.height(12.dp))
 
-                when (board) {
-                    is BoardState.ChessBoard -> ChessBoardView(
-                        board = board,
-                        selectedSquare = selectedSquare,
-                        enabled = canMove,
-                        onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
-                    )
-                    is BoardState.CheckersBoard -> CheckersBoardView(
-                        board = board,
-                        selectedSquare = selectedSquare,
-                        enabled = canMove,
-                        onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
-                    )
-                    is BoardState.TttBoard -> TttBoardView(
-                        board = board,
-                        enabled = canMove,
-                        onCellTap = { cell -> submitMove(buildJsonObject { put("cell", cell) }) },
-                    )
-                    is BoardState.UltimateBoard -> UltimateBoardView(
-                        board = board,
-                        enabled = canMove,
-                        onCellTap = { subBoard, cell ->
-                            submitMove(
-                                buildJsonObject {
-                                    put("board", subBoard)
-                                    put("cell", cell)
+                // Board occupies the remaining height; grid boards bound to a square that
+                // fits, hangman (a tall non-grid layout) scrolls within its own slot.
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (board) {
+                        is BoardState.ChessBoard -> ChessBoardView(
+                            board = board,
+                            selectedSquare = selectedSquare,
+                            enabled = canMove,
+                            onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
+                        )
+                        is BoardState.CheckersBoard -> CheckersBoardView(
+                            board = board,
+                            selectedSquare = selectedSquare,
+                            enabled = canMove,
+                            onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
+                        )
+                        is BoardState.TttBoard -> TttBoardView(
+                            board = board,
+                            enabled = canMove,
+                            onCellTap = { cell -> submitMove(buildJsonObject { put("cell", cell) }) },
+                        )
+                        is BoardState.UltimateBoard -> UltimateBoardView(
+                            board = board,
+                            enabled = canMove,
+                            onCellTap = { subBoard, cell ->
+                                submitMove(
+                                    buildJsonObject {
+                                        put("board", subBoard)
+                                        put("cell", cell)
+                                    },
+                                )
+                            },
+                        )
+                        is BoardState.HangmanBoard -> Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                        ) {
+                            HangmanBoardView(
+                                board = board,
+                                enabled = canMove,
+                                onGuess = { letter ->
+                                    submitMove(buildJsonObject { put("letter", letter.toString()) })
                                 },
                             )
-                        },
-                    )
-                    is BoardState.HangmanBoard -> HangmanBoardView(
-                        board = board,
-                        enabled = canMove,
-                        onGuess = { letter ->
-                            submitMove(buildJsonObject { put("letter", letter.toString()) })
-                        },
-                    )
+                        }
+                    }
                 }
 
                 moveError?.let {

@@ -1,5 +1,6 @@
 package com.roadtrip.app.ui.games
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -124,10 +125,11 @@ fun ReplayScreen(
     val currentGame = game
     val board: BoardState? = remember(version, currentSession) { currentSession?.board() }
 
+    // Board stays out of the scroll region so it can bound itself to the viewport
+    // (ANDGAME-009); the header and playback controls flank it.
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -146,7 +148,12 @@ fun ReplayScreen(
                 )
                 Spacer(Modifier.height(12.dp))
 
-                ReplayBoard(board)
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ReplayBoard(board)
+                }
 
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -199,6 +206,10 @@ private fun ReplayBoard(board: BoardState) {
         is BoardState.CheckersBoard -> CheckersBoardView(board, selectedSquare = null, enabled = false) {}
         is BoardState.TttBoard -> TttBoardView(board, enabled = false) {}
         is BoardState.UltimateBoard -> UltimateBoardView(board, enabled = false) { _, _ -> }
-        is BoardState.HangmanBoard -> HangmanBoardView(board, enabled = false) {}
+        is BoardState.HangmanBoard -> Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        ) {
+            HangmanBoardView(board, enabled = false) {}
+        }
     }
 }
