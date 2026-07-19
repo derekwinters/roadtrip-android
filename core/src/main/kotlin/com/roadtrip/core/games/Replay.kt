@@ -27,17 +27,30 @@ sealed class BoardState {
     /** squares: "b6" -> "w"/"r" (men) or "W"/"R" (kings). */
     data class CheckersBoard(val squares: Map<String, String>) : BoardState()
 
-    /** cells: index 0..8, 'X'/'O'/null. */
-    data class TttBoard(val cells: List<Char?>, val winner: Char?) : BoardState()
+    /**
+     * cells: index 0..8, 'X'/'O'/null. winningLine: the three cell indices forming the win
+     * (null while the game is undecided) so the view can highlight exactly those tiles
+     * (ANDGAME-014).
+     */
+    data class TttBoard(
+        val cells: List<Char?>,
+        val winner: Char?,
+        val winningLine: List<Int>? = null,
+    ) : BoardState()
 
     /**
      * boards: 9 sub-boards of 9 cells; macro: sub-board winners; nextBoard: the dictated
-     * sub-board for the next move, null = free choice (decided/full board).
+     * sub-board for the next move, null = free choice (decided/full board). macroWinner /
+     * macroWinningLine expose the overall win and its macro-cell indices; boardWinningLines
+     * exposes the deciding three cells inside each captured sub-board (ANDGAME-014).
      */
     data class UltimateBoard(
         val boards: List<List<Char?>>,
         val macro: List<Char?>,
         val nextBoard: Int?,
+        val macroWinner: Char? = null,
+        val macroWinningLine: List<Int>? = null,
+        val boardWinningLines: List<List<Int>?> = List(9) { null },
     ) : BoardState()
 
     /** masked: unguessed letters as '_', spaces kept visible (word boundaries). */
@@ -151,7 +164,8 @@ class ReplayEngine(
             val cell = move.int("cell") ?: return@forEachIndexed
             cells[cell] = symbolFor(moveIndex)
         }
-        return BoardState.TttBoard(cells.toList(), tttWinner(cells.toList()))
+        val list = cells.toList()
+        return BoardState.TttBoard(list, tttWinner(list), tttWinningLine(list))
     }
 
     // ---- ultimate tic-tac-toe ---------------------------------------------------------------
@@ -167,12 +181,22 @@ class ReplayEngine(
         }
         val boardLists = boards.map { it.toList() }
         val macro = boardLists.map { tttWinner(it) }
+        val boardWinningLines = boardLists.map { tttWinningLine(it) }
         // The last move's cell dictates the next sub-board — unless that board is decided
         // or full, in which case the next player has free choice.
         val nextBoard = lastCell?.takeIf { dictated ->
             macro[dictated] == null && boardLists[dictated].any { it == null }
         }
-        return BoardState.UltimateBoard(boardLists, macro, nextBoard)
+        val macroWinningLine = tttWinningLine(macro)
+        val macroWinner = macroWinningLine?.let { macro[it[0]] }
+        return BoardState.UltimateBoard(
+            boards = boardLists,
+            macro = macro,
+            nextBoard = nextBoard,
+            macroWinner = macroWinner,
+            macroWinningLine = macroWinningLine,
+            boardWinningLines = boardWinningLines,
+        )
     }
 
     // ---- hangman -----------------------------------------------------------------------
@@ -202,23 +226,32 @@ class ReplayEngine(
     /** X/creator moves first; symbols alternate deterministically by move index. */
     private fun symbolFor(moveIndex: Int): Char = if (moveIndex % 2 == 0) 'X' else 'O'
 
-    private fun tttWinner(cells: List<Char?>): Char? {
-        val lines = listOf(
-            listOf(0, 1, 2), listOf(3, 4, 5), listOf(6, 7, 8),
-            listOf(0, 3, 6), listOf(1, 4, 7), listOf(2, 5, 8),
-            listOf(0, 4, 8), listOf(2, 4, 6),
-        )
-        for (line in lines) {
-            val first = cells[line[0]] ?: continue
-            if (line.all { cells[it] == first }) return first
-        }
-        return null
-    }
-
     private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.contentOrNull
 
     private fun JsonObject.int(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
 }
+
+/** The eight winning triples of a 3x3 board. */
+val TTT_LINES: List<List<Int>> = listOf(
+    listOf(0, 1, 2), listOf(3, 4, 5), listOf(6, 7, 8),
+    listOf(0, 3, 6), listOf(1, 4, 7), listOf(2, 5, 8),
+    listOf(0, 4, 8), listOf(2, 4, 6),
+)
+
+/**
+ * The three cell indices forming a completed line, or null if undecided (ANDGAME-014).
+ * Pure/JVM-testable so the Compose views can highlight exactly the winning tiles.
+ */
+fun tttWinningLine(cells: List<Char?>): List<Int>? {
+    for (line in TTT_LINES) {
+        val first = cells[line[0]] ?: continue
+        if (line.all { cells[it] == first }) return line
+    }
+    return null
+}
+
+/** Winner symbol for a 3x3 board, derived from [tttWinningLine]. */
+fun tttWinner(cells: List<Char?>): Char? = tttWinningLine(cells)?.let { cells[it[0]] }
 
 /**
  * Replay/spectate session with play/pause/step controls over a move stream (ANDGAME-006).
