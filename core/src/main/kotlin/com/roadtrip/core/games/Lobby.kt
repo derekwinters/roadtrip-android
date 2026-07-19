@@ -65,17 +65,24 @@ object LobbyReducer {
                 )
             }
             "game.joined" -> games.update(gameId) {
+                val joiner = str("profile_id")
                 it.copy(
                     status = GameStatus.ACTIVE,
-                    opponentId = str("profile_id"),
-                    // The creator opens play (X = creator, white = creator).
-                    turn = it.createdBy,
+                    opponentId = joiner,
+                    // Hangman: the creator set the secret word and never guesses — the turn
+                    // goes to the joining guesser and stays there (ANDGAME-015, backend
+                    // GAME-013). Other games: the creator opens play (X/white = creator).
+                    turn = if (it.gameType == GameType.HANGMAN) joiner else it.createdBy,
                 )
             }
             "game.move" -> games.update(gameId) { game ->
                 game.copy(
                     moveCount = payload["move_no"]?.jsonPrimitive?.intOrNull ?: (game.moveCount + 1),
-                    turn = when (event.actorId) {
+                    // Hangman has a single guesser: the turn never leaves them (no
+                    // creator↔opponent alternation, ANDGAME-015). Other games alternate.
+                    turn = if (game.gameType == GameType.HANGMAN) {
+                        game.opponentId
+                    } else when (event.actorId) {
                         game.createdBy -> game.opponentId
                         else -> game.createdBy
                     },

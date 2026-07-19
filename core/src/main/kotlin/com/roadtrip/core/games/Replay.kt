@@ -58,6 +58,7 @@ sealed class BoardState {
         val masked: String,
         val guessed: Set<Char>,
         val wrongCount: Int,
+        val maxWrong: Int = 6,
     ) : BoardState()
 }
 
