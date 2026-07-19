@@ -91,7 +91,9 @@ class HttpRoadtripApi(
 
     override suspend fun geocode(q: String): List<GeocodeMatch> {
         val url = url("api/geocode") { addQueryParameter("q", q) }
-        return request("GET", url, null, GeocodeResponse.serializer()).results
+        // The backend answers with a bare top-level JSON array (GSR-002 / ANDMAP-008), not an
+        // object envelope — decode it as a list. An empty body [] yields an empty list.
+        return request("GET", url, null, ListSerializer(GeocodeMatch.serializer()))
     }
 
     // ---- sync ------------------------------------------------------------------------

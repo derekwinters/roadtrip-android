@@ -2,13 +2,17 @@ package com.roadtrip.core.map
 
 import com.roadtrip.core.api.ApiException
 import com.roadtrip.core.api.GeocodeMatch
+import com.roadtrip.core.api.HttpRoadtripApi
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.testing.FakeRoadtripApi
+import com.roadtrip.core.testing.GeocodeFixtures
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 
 class AddressSearchTest {
     private val api = FakeRoadtripApi()
@@ -16,6 +20,36 @@ class AddressSearchTest {
 
     private val moab = GeocodeMatch("Moab, Grand County, Utah, United States", 38.5733, -109.5498)
     private val arches = GeocodeMatch("Arches National Park, Utah, United States", 38.7331, -109.5925)
+
+    /**
+     * Drives [AddressSearch] through the real [HttpRoadtripApi] JSON-decoding boundary against a
+     * [MockWebServer] returning [body]. A [FakeRoadtripApi] can't cover this: it skips decoding,
+     * so the envelope-mismatch bug (#85) only surfaces here, end to end.
+     */
+    private suspend fun searchAgainstServer(body: String): AddressSearchState {
+        val server = MockWebServer()
+        server.start()
+        return try {
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBody(body).addHeader("Content-Type", "application/json"),
+            )
+            val http = HttpRoadtripApi(server.url("/").toString(), { "profile-parent" })
+            AddressSearch(http).search("Moab", Role.PARENT)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `a well-formed bare-array response resolves to Results, never Error ANDMAP-011`() = runTest {
+        val state = assertIs<AddressSearchState.Results>(searchAgainstServer(GeocodeFixtures.SINGLE_MATCH_JSON))
+        assertEquals(listOf(GeocodeFixtures.SINGLE_MATCH), state.matches)
+    }
+
+    @Test
+    fun `an empty bare-array response resolves to NoMatches, not Error ANDMAP-011`() = runTest {
+        assertEquals(AddressSearchState.NoMatches, searchAgainstServer(GeocodeFixtures.EMPTY_JSON))
+    }
 
     @Test
     fun `an explicit search lists the geocode matches ANDMAP-008`() = runTest {

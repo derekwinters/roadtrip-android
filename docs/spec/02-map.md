@@ -23,7 +23,7 @@ on-device tile cache so the last-viewed region works offline).
 | ANDMAP-005 | Stop journal entries deep-link to the map centered on the stop's pin (see ANDJRNL-004). | auto |
 | ANDMAP-006 | Parents can create a destination by long-pressing the map (or entering coordinates), and edit/reorder/remove pending destinations; kids never see these affordances (AND-003). | manual |
 | ANDMAP-007 | Map tiles use osmdroid's cache; previously viewed areas render offline (dry-run check). | manual |
-| ANDMAP-008 | The add-destination flow offers address search: an explicit search action calls `GET /api/geocode` and lists up to 5 matches; picking one fills coordinates and pre-fills the editable name. | auto |
+| ANDMAP-008 | The add-destination flow offers address search: an explicit search action calls `GET /api/geocode` and lists up to 5 matches; picking one fills coordinates and pre-fills the editable name. The client decodes the backend's response as a **bare top-level JSON array** of `{display_name, lat, lon}` (backend GSR-002) — never an object envelope such as `{results:[…]}`; an empty body `[]` yields no matches, not an error. | auto |
 | ANDMAP-009 | When the device is genuinely offline — a transport failure (`IOException`) or the backend's `geocode_unavailable` (upstream geocoder unreachable, backend GSR-004) — the address path shows a needs-internet state; pin and coordinate entry stay available in this and every other failure state. | auto |
 | ANDMAP-010 | Each marker renders with distinct, kind-based iconography, all center-anchored on the point: current position is a car; trip start is a red flat dot; destinations are green flat dots (the active/next destination emphasized) — never osmdroid's default teardrop pin. The kind→style mapping is derived purely from `MarkerKind` (`markerStyleFor`), independent of which markers a role sees (ANDMAP-001). | auto |
 | ANDMAP-011 | Address search distinguishes an online geocoder failure from being offline: when the backend reaches the geocoder but it errors (`geocode_upstream_error`, backend GSR-006) or returns another server error while online, the flow shows a distinct temporarily-unavailable state (not a needs-internet message); any other unexpected failure surfaces as an explicit, logged error state rather than silently degrading. Coordinate/pin entry remain available (ANDMAP-009). | auto |
@@ -51,6 +51,13 @@ matches of `{display_name, lat, lon}`), so the app ships no third-party geocodin
 fires only on an explicit action — never per keystroke — and, like the rest of destination
 editing, is gated by the profile's role attribute (AND-003): kid profiles never trigger
 geocode traffic.
+
+The success body is a **bare top-level JSON array** of matches, matching the backend contract
+(GSR-002) — the client decodes it with `ListSerializer(GeocodeMatch)`, not an object envelope.
+Decoding an array with an object serializer throws `JsonDecodingException`, which is neither an
+`IOException` nor an `ApiException`, so it would land in the last-resort `Error` state and make
+*every* search fail — including the empty-result case `[]`, which is still not a JSON object.
+Both the success and empty paths therefore parse the array directly (ANDMAP-008).
 
 The proxy reports two distinct 503 codes, which the client keeps apart (ANDMAP-009 vs
 ANDMAP-011): `geocode_unavailable` (upstream unreachable / effectively offline, backend
