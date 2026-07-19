@@ -41,6 +41,21 @@ object TripPlannerReducer {
 
     fun plannedTrip(trips: List<Trip>): Trip? = trips.firstOrNull { it.status == TripStatus.PLANNED }
 
+    /**
+     * Resolves the planned trip's staged itinerary through [stagedFor] (a trip-scoped cache
+     * read) and reduces (AND-012). Extracted as a pure function so the app shell's
+     * off-main-thread `plannerFlow` stays thin glue and this "which staged list feeds the
+     * reducer" decision is JVM-testable. [stagedFor] is only invoked when a planned trip
+     * exists, and a null result reads as an empty (not-yet-cached) itinerary.
+     */
+    fun reduce(
+        trips: List<Trip>,
+        stagedFor: (String) -> List<Destination>?,
+        role: Role,
+        online: Boolean,
+    ): PlannerState =
+        reduce(trips, plannedTrip(trips)?.id?.let(stagedFor).orEmpty(), role, online)
+
     fun reduce(
         trips: List<Trip>,
         stagedDestinations: List<Destination>,
