@@ -17,6 +17,11 @@ Implements the client side of backend spec `09-sync-notifications.md`.
   `GET /api/events?after=<cursor>` to update local caches (journal, map, games, checklist,
   notifications). Foreground: long-poll loop. Background: periodic WorkManager sync.
 - Sync triggers: app foreground, connectivity regained, WorkManager period, post-write.
+- **Foreground live-refresh**: WorkManager's periodic minimum is 15 min, so an in-app loop
+  keeps the on-screen data current while the app is open. Whether to refresh (and when to
+  re-check) is a pure policy (`ForegroundRefreshPolicy`) over `{visible, online,
+  lastRefreshAt, now}`; the loop reuses the existing sync/read-model machinery and prefers a
+  cheap re-pull of just the `visibleContext` screen, falling back to a full foreground pass.
 
 ## Requirements
 
@@ -29,3 +34,4 @@ Implements the client side of backend spec `09-sync-notifications.md`.
 | ANDSYNC-005 | The inbox cursor only advances after the pulled page is durably applied to the local cache, so a crash mid-apply re-pulls rather than skips. | auto |
 | ANDSYNC-006 | The journal cache renders correctly interleaved entries after syncing events that were created offline on other devices (mixed-device ordering by client_ts). | auto |
 | ANDSYNC-007 | Sync runs on: foreground entry, connectivity regained, a periodic background schedule (15 min default), and after each local write; passes are serialized (no concurrent flushes). | auto |
+| ANDSYNC-008 | While the app is foregrounded (`activityVisible`) and online, an in-app loop refreshes the visible screen's read model on a short cadence (default 30 s, tunable) so new server data appears in place via `refreshTick` without navigating away or reopening. The refresh/re-check decision is a pure policy (`ForegroundRefreshPolicy`) over `{visible, online, lastRefreshAt, now}`: it refreshes when online and at least the interval has elapsed, waits the remaining time otherwise, backs off (no network pass) while offline, and idles while backgrounded so the loop never spins or drains battery. | auto |
