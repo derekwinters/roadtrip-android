@@ -7,9 +7,15 @@ trips remain browsable read-only. **Starting/ending/renaming a trip is parent-on
 ## Interface decisions
 
 - **Between trips** (no active trip, at least one ended trip): the app opens on the most
-  recently ended trip **read-only**, under a persistent **"No active road trip"** banner.
-  Parents get a **"Road trip starts now"** action in the banner and in settings; kids see
-  history only and never see start/end anywhere.
+  recently ended trip **read-only**, under a persistent, single-line **"No active road
+  trip."** strip. The strip carries only that banner line plus a right-aligned **"New
+  trip"** text link that navigates to **Settings › Road trip** (where a trip is
+  created/started); it no longer hosts the start/plan/history buttons or a read-only
+  "Browsing …" subtitle. The **"New trip"** link follows the parent-only start gating
+  (`startAction.visible`) — kids see the banner without the link and never see start/end
+  anywhere. Start/end live in **Settings › Road trip**, trip history lives in the **Trip
+  tab**, and an existing plan keeps its own actions on the **planned-trip card** below the
+  strip.
 - **First-ever launch** (no trips at all): a welcome/empty state with the parent start
   action (kids get the welcome text without the action).
 - The location tracker **does not run between trips** — no active trip, no pings
@@ -52,12 +58,12 @@ trips remain browsable read-only. **Starting/ending/renaming a trip is parent-on
 
 | ID | Requirement | Verify |
 |----|-------------|--------|
-| ANDTRIP-001 | "Start road trip" / "End road trip" actions exist (banner + settings) and are visible **only to parent profiles** (role attribute, per AND-003); kids never see them anywhere in the UI and get history browsing only. | auto |
-| ANDTRIP-002 | An active-trip indicator shows the current trip's name; with no active trip the app opens on the most recently ended trip read-only under a persistent "No active road trip" banner (first-ever launch: welcome/empty state; the tracker never runs between trips). Journal, map, checklist, and trip caches are scoped per trip so switching/ending never mixes histories. | auto |
+| ANDTRIP-001 | "Start road trip" / "End road trip" actions live in **Settings › Road trip** (reached from the no-active-trip strip's "New trip" link) and are visible **only to parent profiles** (role attribute, per AND-003); kids never see them anywhere in the UI and get history browsing only. | auto |
+| ANDTRIP-002 | An active-trip indicator shows the current trip's name; with no active trip the app opens on the most recently ended trip read-only under a persistent, **single-line "No active road trip." strip** (`TripStateReducer.noActiveTripStrip`): one banner line (ellipsized if ever needed) plus a right-aligned **"New trip"** link that navigates to Settings › Road trip. The strip no longer hosts the start/plan/history actions or the read-only "Browsing …" subtitle (those live in Settings, the Trip-tab history, and the planned-trip card); the "New trip" link follows the parent-only start gating (`startAction.visible`), so kids see the banner without it. First-ever launch is the welcome/empty state; the tracker never runs between trips. Journal, map, checklist, and trip caches are scoped per trip so switching/ending never mixes histories. | auto |
 | ANDTRIP-003 | A trip history browser lists past trips and opens read-only journal, checklist, and summary views for each. | auto |
 | ANDTRIP-004 | Start/end are online-only actions with a confirm dialog (the server arbitrates the single active trip); offline, the actions are disabled with an explanation, consistent with AND-005. | auto |
 | ANDTRIP-005 | Trip start/end flows verified end-to-end during the pre-trip dry run. | manual |
 | ANDTRIP-006 | Parents can create, rename, and delete exactly **one** planned "next trip" (server 409s a second plan) with an optional approximate free-text start; the no-active-trip screen and the first-launch welcome show the planned-trip card (name, ~start, itinerary preview) with a **"Road trip starts now"** action that activates it; kids see the card read-only with no planner actions. | auto |
 | ANDTRIP-007 | Destinations can be staged against the planned trip from the map screen exactly like during a trip — destination writes/list pass `?trip=<plannedId>`; staging is parent-only and online-only; the staged list shows on the planned-trip card and in the map destination panel while viewing the planned trip. | auto |
 | ANDTRIP-008 | Activating the planned trip adopts the staged itinerary: the client calls `POST /api/trips/{id}/start` (409 while another trip is active), re-syncs, and the app switches to the new active trip — the trip-scoped caches land under the new trip's keys and the staged destinations become the active list. | auto |
-| ANDTRIP-009 | While a trip is active, its name is surfaced as **persistent context in the top app bar** — a compact overline above the per-screen title — rather than as a dismissable notification-style band, and it ellipsizes when long. The standalone TripStrip active-trip-name band is removed; the between-trips "No active road trip" banner, the read-only "Browsing …" state, and the parent start/plan/history actions stay in the TripStrip where they are. The app bar shows the active name only while a trip runs (`TripStateReducer.activeTripBarLabel` returns the active trip's name and null otherwise). | auto |
+| ANDTRIP-009 | While a trip is active, its name is surfaced as **persistent context in the top app bar** — a compact overline above the per-screen title — rather than as a dismissable notification-style band, and it ellipsizes when long. The standalone TripStrip active-trip-name band is removed; between trips the TripStrip is a single-line "No active road trip." banner with the parent-only "New trip → Settings" link only (ANDTRIP-002) — it no longer carries the read-only "Browsing …" subtitle or the start/plan/history actions. The app bar shows the active name only while a trip runs (`TripStateReducer.activeTripBarLabel` returns the active trip's name and null otherwise). | auto |

@@ -10,6 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -56,6 +57,41 @@ class TripStateReducerTest {
         assertEquals("trip-2", phase.lastTrip.id)
         assertEquals("trip-2", state.viewedTrip?.id)
         assertEquals(TripStateReducer.NO_ACTIVE_TRIP_BANNER, state.bannerText)
+    }
+
+    @Test
+    fun `the between-trips strip is one banner line with a parent-only New trip link ANDTRIP-002`() {
+        val parent = TripStateReducer.reduce(listOf(endedOld, endedRecent), Role.PARENT, online = true)
+        val strip = assertNotNull(TripStateReducer.noActiveTripStrip(parent))
+        // Single line: the exact banner, ellipsized (no forced wraps), and no other content
+        // than the banner + link surfaced from the reducer seam (no History/Plan/Start).
+        assertEquals(TripStateReducer.NO_ACTIVE_TRIP_STRIP_BANNER, strip.banner)
+        assertFalse(strip.banner.contains("\n"))
+        // The "New trip → Settings" link follows the parent-only start gating.
+        assertTrue(strip.newTripLinkVisible)
+        assertEquals(parent.startAction.visible, strip.newTripLinkVisible)
+
+        // Kids get the informational banner without the link (trip creation is parent-only).
+        val kid = TripStateReducer.reduce(listOf(endedOld, endedRecent), Role.KID, online = true)
+        val kidStrip = assertNotNull(TripStateReducer.noActiveTripStrip(kid))
+        assertEquals(TripStateReducer.NO_ACTIVE_TRIP_STRIP_BANNER, kidStrip.banner)
+        assertFalse(kidStrip.newTripLinkVisible, "kids see the banner without the New trip link")
+        assertEquals(kid.startAction.visible, kidStrip.newTripLinkVisible)
+    }
+
+    @Test
+    fun `the strip shows on first launch and offline for parents but not during a trip ANDTRIP-002`() {
+        // First-ever launch: parents still get the strip + link.
+        val firstLaunch = TripStateReducer.reduce(emptyList(), Role.PARENT, online = true)
+        assertTrue(assertNotNull(TripStateReducer.noActiveTripStrip(firstLaunch)).newTripLinkVisible)
+
+        // Offline parents keep the link (the disabled/offline explanation lives in Settings).
+        val offline = TripStateReducer.reduce(emptyList(), Role.PARENT, online = false)
+        assertTrue(assertNotNull(TripStateReducer.noActiveTripStrip(offline)).newTripLinkVisible)
+
+        // While a trip is active the strip renders nothing (name lives in the app bar).
+        val duringTrip = TripStateReducer.reduce(listOf(endedOld, active), Role.PARENT, online = true)
+        assertNull(TripStateReducer.noActiveTripStrip(duringTrip))
     }
 
     @Test
