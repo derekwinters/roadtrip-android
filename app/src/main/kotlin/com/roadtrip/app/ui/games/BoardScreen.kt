@@ -44,6 +44,7 @@ import com.roadtrip.core.games.GameOfflineGate
 import com.roadtrip.core.games.GameStreamFollower
 import com.roadtrip.core.games.HangmanBoardStatus
 import com.roadtrip.core.games.HangmanView
+import com.roadtrip.core.games.LastMoveHighlight
 import com.roadtrip.core.games.LobbyReducer
 import com.roadtrip.core.games.hangmanBoardStatus
 import com.roadtrip.core.games.MoveSubmitter
@@ -209,6 +210,14 @@ fun BoardScreen(
         }
     }
 
+    // The single most-recent move to highlight (ANDGAME-024), resolved from the same move stream
+    // and live cursor the board renders — so it updates over the ANDGAME-005 long-poll and resets
+    // on each new move. Hangman's board comes from the server view, but the guessed letter is not
+    // redacted, so the session's appended move stream still yields the last guess.
+    val lastMove: LastMoveHighlight? = remember(boardVersion, session, currentGame) {
+        currentGame?.let { session?.lastMove(it.gameType) }
+    }
+
     fun submitMove(move: JsonElement) {
         val g = currentGame ?: return
         moveError = null
@@ -334,22 +343,26 @@ fun BoardScreen(
                         is BoardState.ChessBoard -> ChessBoardView(
                             board = board,
                             selectedSquare = selectedSquare,
+                            lastMove = lastMove as? LastMoveHighlight.PieceMove,
                             enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
                         )
                         is BoardState.CheckersBoard -> CheckersBoardView(
                             board = board,
                             selectedSquare = selectedSquare,
+                            lastMove = lastMove as? LastMoveHighlight.PieceMove,
                             enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
                         )
                         is BoardState.TttBoard -> TttBoardView(
                             board = board,
+                            lastMove = lastMove as? LastMoveHighlight.MarkCell,
                             enabled = canInteract,
                             onCellTap = { cell -> requestMove(buildJsonObject { put("cell", cell) }) },
                         )
                         is BoardState.UltimateBoard -> UltimateBoardView(
                             board = board,
+                            lastMove = lastMove as? LastMoveHighlight.UltimateCell,
                             enabled = canInteract,
                             onCellTap = { subBoard, cell ->
                                 requestMove(
@@ -367,6 +380,7 @@ fun BoardScreen(
                         ) {
                             HangmanBoardView(
                                 board = board,
+                                lastGuess = lastMove as? LastMoveHighlight.HangmanGuess,
                                 enabled = canInteract,
                                 onGuess = { letter ->
                                     requestMove(buildJsonObject { put("letter", letter.toString()) })

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -34,6 +35,8 @@ import androidx.compose.ui.unit.sp
 import com.roadtrip.core.games.BoardMetrics
 import com.roadtrip.core.games.BoardPieces
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.LastMoveHighlight
+import com.roadtrip.core.games.LastMoveShade
 import com.roadtrip.core.games.LegendEntry
 import com.roadtrip.core.games.PieceInk
 import com.roadtrip.core.games.PlayerLegend
@@ -60,16 +63,35 @@ private val DARK_SQUARE = Color(0xFFB58863)
 private fun Modifier.activeSquareBorder(): Modifier =
     border(3.dp, MaterialTheme.colorScheme.primary)
 
+/**
+ * FILL color for a last-move shade role (ANDGAME-024), or null for no shade. Deliberately a
+ * background tint, never a border, so it reads distinctly from the ANDGAME-020 `3.dp`
+ * `colorScheme.primary` selected/on-turn border and the ANDGAME-004 dictated-sub-board highlight.
+ * MARK_FILL is a solid container swap for mark cells; the piece roles are translucent overlays
+ * composited over the wood square so the glyph still reads (origin greyed dark, destination a dim
+ * accent, capture a dim error tint).
+ */
+@Composable
+private fun lastMoveShadeColor(shade: LastMoveShade?): Color? = when (shade) {
+    null -> null
+    LastMoveShade.MARK_FILL -> MaterialTheme.colorScheme.primaryContainer
+    LastMoveShade.PIECE_ORIGIN -> Color.Black.copy(alpha = 0.38f)
+    LastMoveShade.PIECE_DESTINATION -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+    LastMoveShade.PIECE_CAPTURE -> MaterialTheme.colorScheme.error.copy(alpha = 0.32f)
+}
+
 @Composable
 fun ChessBoardView(
     board: BoardState.ChessBoard,
     selectedSquare: String?,
+    lastMove: LastMoveHighlight.PieceMove?,
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
         pieceAt = { square -> BoardPieces.chessGlyph(board.squares[square]) },
         inkAt = { square -> BoardPieces.chessInk(board.squares[square]) },
+        shadeAt = { square -> lastMove?.shadeFor(square) },
         selectedSquare = selectedSquare,
         enabled = enabled,
         onSquareTap = onSquareTap,
@@ -80,12 +102,14 @@ fun ChessBoardView(
 fun CheckersBoardView(
     board: BoardState.CheckersBoard,
     selectedSquare: String?,
+    lastMove: LastMoveHighlight.PieceMove?,
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
         pieceAt = { square -> BoardPieces.checkersGlyph(board.squares[square]) },
         inkAt = { square -> BoardPieces.checkersInk(board.squares[square]) },
+        shadeAt = { square -> lastMove?.shadeFor(square) },
         selectedSquare = selectedSquare,
         enabled = enabled,
         onSquareTap = onSquareTap,
@@ -144,6 +168,7 @@ private fun PieceGlyph(glyph: String, ink: PieceInk?) {
 private fun EightByEight(
     pieceAt: (String) -> String?,
     inkAt: (String) -> PieceInk?,
+    shadeAt: (String) -> LastMoveShade?,
     selectedSquare: String?,
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
@@ -157,11 +182,19 @@ private fun EightByEight(
                         // a1 dark, h1 light — matches the core checkers piece layout.
                         val darkSquare = (fileIndex + rank) % 2 == 1
                         val background = if (darkSquare) DARK_SQUARE else LIGHT_SQUARE
+                        // Last-move shade (ANDGAME-024): a translucent overlay composited over the
+                        // wood square (origin greyed dark, destination dim accent, capture dim
+                        // error). It sits UNDER the piece glyph and is distinct from the selected-
+                        // square border above.
+                        val shadeColor = lastMoveShadeColor(shadeAt(square))
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxSize()
                                 .background(background)
+                                .then(
+                                    if (shadeColor != null) Modifier.background(shadeColor) else Modifier,
+                                )
                                 .then(
                                     if (square == selectedSquare) {
                                         Modifier.activeSquareBorder()
@@ -187,6 +220,7 @@ private fun EightByEight(
 @Composable
 fun TttBoardView(
     board: BoardState.TttBoard,
+    lastMove: LastMoveHighlight.MarkCell?,
     enabled: Boolean,
     onCellTap: (Int) -> Unit,
 ) {
@@ -199,8 +233,12 @@ fun TttBoardView(
                     for (col in 0..2) {
                         val cell = row * 3 + col
                         val winning = board.winningLine?.contains(cell) == true
+                        // ANDGAME-024: shade the last-placed cell. The win line keeps priority so a
+                        // finished game shows BOTH the win-line and the final-move highlight.
+                        val lastMoved = lastMove?.cellIndex == cell
                         val background = when {
                             winning -> MaterialTheme.colorScheme.tertiaryContainer
+                            lastMoved -> MaterialTheme.colorScheme.primaryContainer
                             finished -> MaterialTheme.colorScheme.secondaryContainer
                             else -> MaterialTheme.colorScheme.surfaceVariant
                         }
@@ -230,6 +268,7 @@ fun TttBoardView(
 @Composable
 fun UltimateBoardView(
     board: BoardState.UltimateBoard,
+    lastMove: LastMoveHighlight.UltimateCell?,
     enabled: Boolean,
     onCellTap: (subBoard: Int, cell: Int) -> Unit,
 ) {
@@ -262,6 +301,8 @@ fun UltimateBoardView(
                                 winner = board.macro[subIndex],
                                 winningCells = board.boardWinningLines[subIndex],
                                 macroWinning = macroWinning,
+                                // ANDGAME-024: the last-placed cell only when it lives in this sub-board.
+                                lastMoveCell = lastMove?.takeIf { it.board == subIndex }?.cell,
                                 enabled = playable,
                                 onCellTap = { cell -> onCellTap(subIndex, cell) },
                             )
@@ -279,6 +320,7 @@ private fun SubBoard(
     winner: Char?,
     winningCells: List<Int>?,
     macroWinning: Boolean,
+    lastMoveCell: Int?,
     enabled: Boolean,
     onCellTap: (Int) -> Unit,
 ) {
@@ -289,10 +331,12 @@ private fun SubBoard(
                     for (col in 0..2) {
                         val cell = row * 3 + col
                         val winning = winningCells?.contains(cell) == true
-                        val background = if (winning) {
-                            MaterialTheme.colorScheme.tertiaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
+                        // ANDGAME-024: win line keeps priority so both highlights coexist.
+                        val lastMoved = lastMoveCell == cell
+                        val background = when {
+                            winning -> MaterialTheme.colorScheme.tertiaryContainer
+                            lastMoved -> MaterialTheme.colorScheme.primaryContainer
+                            else -> MaterialTheme.colorScheme.surfaceVariant
                         }
                         Box(
                             modifier = Modifier
@@ -430,6 +474,7 @@ private val GALLOWS_STAGES = listOf(
 @Composable
 fun HangmanBoardView(
     board: BoardState.HangmanBoard,
+    lastGuess: LastMoveHighlight.HangmanGuess?,
     enabled: Boolean,
     onGuess: (Char) -> Unit,
 ) {
@@ -458,9 +503,20 @@ fun HangmanBoardView(
         for (rowLetters in ('A'..'Z').chunked(7)) {
             Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                 for (letter in rowLetters) {
+                    // ANDGAME-024: shade the most-recently guessed key (fill, not border). A guessed
+                    // key is disabled, so the disabled container color must carry the highlight too.
+                    val lastGuessed = lastGuess?.letter == letter
                     OutlinedButton(
                         onClick = { onGuess(letter) },
                         enabled = enabled && letter !in board.guessed,
+                        colors = if (lastGuessed) {
+                            ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                disabledContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            )
+                        } else {
+                            ButtonDefaults.outlinedButtonColors()
+                        },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
                         modifier = Modifier.weight(1f).padding(1.dp),
                     ) {

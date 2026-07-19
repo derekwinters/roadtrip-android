@@ -35,6 +35,7 @@ import com.roadtrip.app.di.AppContainer
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.LastMoveHighlight
 import com.roadtrip.core.games.ReplayEngine
 import com.roadtrip.core.games.ReplaySession
 import kotlin.math.roundToInt
@@ -124,6 +125,11 @@ fun ReplayScreen(
     val currentSession = session
     val currentGame = game
     val board: BoardState? = remember(version, currentSession) { currentSession?.board() }
+    // The last move follows the replay cursor (ANDGAME-024): highlight tracks the move at the
+    // current position (index-1), not always the final move; nothing highlighted at index 0.
+    val lastMove: LastMoveHighlight? = remember(version, currentSession, currentGame) {
+        currentGame?.let { currentSession?.lastMove(it.gameType) }
+    }
 
     // Board stays out of the scroll region so it can bound itself to the viewport
     // (ANDGAME-012); the header and playback controls flank it.
@@ -152,7 +158,7 @@ fun ReplayScreen(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    ReplayBoard(board)
+                    ReplayBoard(board, lastMove)
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -200,16 +206,24 @@ fun ReplayScreen(
 }
 
 @Composable
-private fun ReplayBoard(board: BoardState) {
+private fun ReplayBoard(board: BoardState, lastMove: LastMoveHighlight?) {
     when (board) {
-        is BoardState.ChessBoard -> ChessBoardView(board, selectedSquare = null, enabled = false) {}
-        is BoardState.CheckersBoard -> CheckersBoardView(board, selectedSquare = null, enabled = false) {}
-        is BoardState.TttBoard -> TttBoardView(board, enabled = false) {}
-        is BoardState.UltimateBoard -> UltimateBoardView(board, enabled = false) { _, _ -> }
+        is BoardState.ChessBoard -> ChessBoardView(
+            board, selectedSquare = null, lastMove = lastMove as? LastMoveHighlight.PieceMove, enabled = false,
+        ) {}
+        is BoardState.CheckersBoard -> CheckersBoardView(
+            board, selectedSquare = null, lastMove = lastMove as? LastMoveHighlight.PieceMove, enabled = false,
+        ) {}
+        is BoardState.TttBoard -> TttBoardView(
+            board, lastMove = lastMove as? LastMoveHighlight.MarkCell, enabled = false,
+        ) {}
+        is BoardState.UltimateBoard -> UltimateBoardView(
+            board, lastMove = lastMove as? LastMoveHighlight.UltimateCell, enabled = false,
+        ) { _, _ -> }
         is BoardState.HangmanBoard -> Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         ) {
-            HangmanBoardView(board, enabled = false) {}
+            HangmanBoardView(board, lastGuess = lastMove as? LastMoveHighlight.HangmanGuess, enabled = false) {}
         }
     }
 }
