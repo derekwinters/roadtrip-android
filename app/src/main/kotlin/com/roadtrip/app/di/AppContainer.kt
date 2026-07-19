@@ -92,17 +92,26 @@ class AppContainer(private val context: Context) {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    // Null until a server address is configured (AND-014): no baked-in default, so the API
+    // client isn't built — and no host is contacted — until the setup gate saves an address.
     @Volatile
-    private var httpApi: RoadtripApi = buildApi(settings.serverUrl.value)
+    private var httpApi: RoadtripApi? = settings.serverUrl.value?.let(::buildApi)
 
-    /** Stable facade; swaps the underlying client when the server URL setting changes. */
-    val api: RoadtripApi = DelegatingRoadtripApi { httpApi }
+    /**
+     * Stable facade; swaps the underlying client when the server URL setting changes. Before a
+     * server is configured any call fails as offline (IOException) — but the setup gate keeps
+     * the UI from making one (AND-014).
+     */
+    val api: RoadtripApi = DelegatingRoadtripApi {
+        httpApi ?: throw IOException("Server address not configured yet")
+    }
 
-    private fun buildApi(baseUrl: String): RoadtripApi = try {
+    private fun buildApi(baseUrl: String): RoadtripApi? = try {
         HttpRoadtripApi(baseUrl, { settings.get()?.id }, okHttp)
     } catch (e: IllegalArgumentException) {
-        // Malformed URL typed into settings: fall back to the default so the app keeps working.
-        HttpRoadtripApi(AppSettings.DEFAULT_SERVER_URL, { settings.get()?.id }, okHttp)
+        // Addresses are validated (AND-015) before they are stored, so this is defensive:
+        // a malformed value leaves the client unconfigured rather than pointing at a guess.
+        null
     }
 
     // ---- storage ------------------------------------------------------------------------
@@ -333,6 +342,9 @@ class AppContainer(private val context: Context) {
 
     private suspend fun syncPass(trigger: SyncTrigger) = withContext(Dispatchers.IO) {
         try {
+            // No server configured yet (AND-014): never probe or sync a guessed host.
+            if (httpApi == null) return@withContext
+
             val online = onlineMonitor.check()
             if (!online) return@withContext
 
@@ -611,8 +623,9 @@ class AppContainer(private val context: Context) {
     init {
         appScope.launch {
             settings.serverUrl.collect { url ->
-                httpApi = buildApi(url)
-                onlineMonitor.check()
+                // Unconfigured (AND-014): don't build a client or probe any host.
+                httpApi = url?.let(::buildApi)
+                if (httpApi != null) onlineMonitor.check()
             }
         }
         // Foreground live-refresh: gated internally on activityVisible/online (ANDSYNC-008).

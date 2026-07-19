@@ -67,7 +67,9 @@ fun ProfilePickerScreen(container: AppContainer) {
     var retryTick by remember { mutableStateOf(0) }
     var showServerDialog by remember { mutableStateOf(false) }
     var showAddMember by remember { mutableStateOf(false) }
-    val serverUrl by container.settings.serverUrl.collectAsState()
+    // The setup gate (AND-014) guarantees a configured address before this screen; coerce the
+    // nullable setting to a String for the always-available editor affordances (AND-008).
+    val serverUrl = container.settings.serverUrl.collectAsState().value.orEmpty()
     val online by container.onlineMonitor.online.collectAsState()
 
     // First composition, every server-address change, and every explicit Retry re-probe
@@ -174,8 +176,8 @@ private fun UnreachableActions(
 
 /**
  * Pre-sign-in server-address editor (AND-008): prefilled from the current setting.
- * Saving persists via [AppSettings.setServerUrl] (which trims and ignores blank) and the
- * caller re-probes immediately.
+ * Saving persists via [AppSettings.setServerUrl] (which validates via the ServerAddress seam
+ * and ignores anything malformed, AND-015) and the caller re-probes immediately.
  */
 @Composable
 private fun ServerAddressDialog(
@@ -197,9 +199,9 @@ private fun ServerAddressDialog(
                     singleLine = true,
                     supportingText = {
                         Text(
-                            "Car hotspot default: ${AppSettings.DEFAULT_SERVER_URL} — on " +
-                                "the Android emulator use http://10.0.2.2:8080 to reach " +
-                                "the host machine.",
+                            "Where this device looks for the family trip server — for example " +
+                                "http://192.168.1.10:8080. On the Android emulator use " +
+                                "http://10.0.2.2:8080 to reach the host machine.",
                         )
                     },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),

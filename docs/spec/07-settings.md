@@ -8,6 +8,10 @@ Parents get a settings screen with: detection tuning (the parent-configurable ra
 start/end actions (ANDTRIP), profile administration, and server address. Kids get only:
 server address display and app version.
 
+The server address is first configured on the first-run setup gate (AND-014), not defaulted
+to a baked-in host; every editor here and pre-sign-in (AND-008) persists through the same
+validation seam (AND-015), so a malformed address can never be saved.
+
 ## Requirements
 
 | ID | Requirement | Verify |
