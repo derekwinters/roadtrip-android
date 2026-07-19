@@ -24,8 +24,9 @@ on-device tile cache so the last-viewed region works offline).
 | ANDMAP-006 | Parents can create a destination by long-pressing the map (or entering coordinates), and edit/reorder/remove pending destinations; kids never see these affordances (AND-003). | manual |
 | ANDMAP-007 | Map tiles use osmdroid's cache; previously viewed areas render offline (dry-run check). | manual |
 | ANDMAP-008 | The add-destination flow offers address search: an explicit search action calls `GET /api/geocode` and lists up to 5 matches; picking one fills coordinates and pre-fills the editable name. | auto |
-| ANDMAP-009 | When geocode is unavailable (offline or 503), the address path shows a clear needs-internet state while pin and coordinate entry remain available. | auto |
+| ANDMAP-009 | When the device is genuinely offline — a transport failure (`IOException`) or the backend's `geocode_unavailable` (upstream geocoder unreachable, backend GSR-004) — the address path shows a needs-internet state; pin and coordinate entry stay available in this and every other failure state. | auto |
 | ANDMAP-010 | Each marker renders with distinct, kind-based iconography, all center-anchored on the point: current position is a car; trip start is a red flat dot; destinations are green flat dots (the active/next destination emphasized) — never osmdroid's default teardrop pin. The kind→style mapping is derived purely from `MarkerKind` (`markerStyleFor`), independent of which markers a role sees (ANDMAP-001). | auto |
+| ANDMAP-011 | Address search distinguishes an online geocoder failure from being offline: when the backend reaches the geocoder but it errors (`geocode_upstream_error`, backend GSR-006) or returns another server error while online, the flow shows a distinct temporarily-unavailable state (not a needs-internet message); any other unexpected failure surfaces as an explicit, logged error state rather than silently degrading. Coordinate/pin entry remain available (ANDMAP-009). | auto |
 
 ## Marker iconography
 
@@ -46,7 +47,15 @@ the breadcrumb polyline in both light and dark themes, rather than depending on 
 ## Address search
 
 Address search goes through the backend's `GET /api/geocode` proxy (parent-only; up to 5
-matches of `{display_name, lat, lon}`; answers 503 `geocode_unavailable` when the upstream
-geocoder can't be reached), so the app ships no third-party geocoding SDK. Search fires only
-on an explicit action — never per keystroke — and, like the rest of destination editing, is
-gated by the profile's role attribute (AND-003): kid profiles never trigger geocode traffic.
+matches of `{display_name, lat, lon}`), so the app ships no third-party geocoding SDK. Search
+fires only on an explicit action — never per keystroke — and, like the rest of destination
+editing, is gated by the profile's role attribute (AND-003): kid profiles never trigger
+geocode traffic.
+
+The proxy reports two distinct 503 codes, which the client keeps apart (ANDMAP-009 vs
+ANDMAP-011): `geocode_unavailable` (upstream unreachable / effectively offline, backend
+GSR-004) maps to the needs-internet state, while `geocode_upstream_error` (the geocoder was
+reached but errored — 403/429/5xx, backend GSR-006) maps to the temporarily-unavailable
+state. Other server errors while online also read as temporarily-unavailable; any remaining
+unexpected throwable becomes a logged error state instead of masquerading as "no internet".
+In every failure state the coordinate fields and long-press-the-map pin stay usable.

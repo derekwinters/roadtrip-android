@@ -6,6 +6,7 @@ import com.roadtrip.core.api.RoadtripApi
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.profiles.FeatureVisibilityRules
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Address-search states of the add-destination flow (ANDMAP-008/009). */
 sealed class AddressSearchState {
@@ -22,10 +23,26 @@ sealed class AddressSearchState {
     object NoMatches : AddressSearchState()
 
     /**
-     * Offline or 503 `geocode_unavailable`: address search needs internet; pin and
-     * coordinate entry remain the working paths (ANDMAP-009).
+     * Genuinely offline: a transport failure (`IOException`) or the backend's
+     * `geocode_unavailable` (upstream geocoder unreachable, backend GSR-004). Address search
+     * needs internet; pin and coordinate entry remain the working paths (ANDMAP-009).
      */
-    object Unavailable : AddressSearchState()
+    object Offline : AddressSearchState()
+
+    /**
+     * The device is online but the geocoder can't answer right now: the backend reached the
+     * upstream and it errored (`geocode_upstream_error`, backend GSR-006), or another server
+     * error came back. Distinct from [Offline] so the user isn't told they have no internet
+     * (ANDMAP-011). Pin and coordinate entry remain available.
+     */
+    object ServiceUnavailable : AddressSearchState()
+
+    /**
+     * An unexpected failure that isn't a known connectivity/geocoder condition. Surfaced (and
+     * logged by the caller) instead of silently degrading into [Offline] (ANDMAP-011). Pin and
+     * coordinate entry remain available.
+     */
+    data class Error(val cause: Throwable) : AddressSearchState()
 }
 
 /** Form pre-fill produced by picking a match: editable name + coordinates (ANDMAP-008). */
@@ -54,10 +71,23 @@ class AddressSearch(private val api: RoadtripApi) {
         state = try {
             val matches = api.geocode(q).take(MAX_RESULTS)
             if (matches.isEmpty()) AddressSearchState.NoMatches else AddressSearchState.Results(matches)
+        } catch (e: CancellationException) {
+            throw e // never swallow coroutine cancellation
         } catch (e: IOException) {
-            AddressSearchState.Unavailable // offline (ANDMAP-009)
+            AddressSearchState.Offline // transport failure — needs internet (ANDMAP-009)
         } catch (e: ApiException) {
-            if (e.status == 503) AddressSearchState.Unavailable else throw e
+            when {
+                // Backend GSR-004: upstream geocoder unreachable — effectively offline (ANDMAP-009).
+                e.code == "geocode_unavailable" -> AddressSearchState.Offline
+                // Backend GSR-006: geocoder reached but errored — online but temporarily down (ANDMAP-011).
+                e.code == "geocode_upstream_error" -> AddressSearchState.ServiceUnavailable
+                // Any other server error while online reads as temporarily-unavailable (ANDMAP-011).
+                e.status in 500..599 -> AddressSearchState.ServiceUnavailable
+                // Unexpected (e.g. a 4xx contract violation): surface it, don't mask it (ANDMAP-011).
+                else -> AddressSearchState.Error(e)
+            }
+        } catch (e: Exception) {
+            AddressSearchState.Error(e) // genuinely unexpected — logged by the caller (ANDMAP-011)
         }
         return state
     }

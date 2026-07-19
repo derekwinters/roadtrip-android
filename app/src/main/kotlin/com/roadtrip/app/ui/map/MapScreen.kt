@@ -1,6 +1,7 @@
 package com.roadtrip.app.ui.map
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -461,12 +462,16 @@ private fun AddDestinationDialog(
                         onClick = {
                             searchState = AddressSearchState.Searching
                             scope.launch {
-                                searchState = withContext(Dispatchers.IO) {
-                                    // Unexpected server errors degrade like unavailability:
-                                    // coordinates below keep working (ANDMAP-009).
-                                    runCatching { addressSearch.search(query, role) }
-                                        .getOrDefault(AddressSearchState.Unavailable)
+                                // AddressSearch classifies the outcome (ANDMAP-009/011); we no
+                                // longer blanket-catch every throwable into "unavailable". Genuine
+                                // failures come back as Error and are logged, not swallowed.
+                                val result = withContext(Dispatchers.IO) {
+                                    addressSearch.search(query, role)
                                 }
+                                if (result is AddressSearchState.Error) {
+                                    Log.e("MapScreen", "Address search failed", result.cause)
+                                }
+                                searchState = result
                             }
                         },
                     ) {
@@ -499,8 +504,18 @@ private fun AddDestinationDialog(
                             "No matches — try a different search.",
                             style = MaterialTheme.typography.labelSmall,
                         )
-                        AddressSearchState.Unavailable -> Text(
+                        AddressSearchState.Offline -> Text(
                             "Address search needs internet — enter coordinates below or long-press the map.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        AddressSearchState.ServiceUnavailable -> Text(
+                            "Address search is temporarily unavailable — try again, or enter coordinates / long-press the map.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        is AddressSearchState.Error -> Text(
+                            "Address search hit an unexpected error — enter coordinates below or long-press the map.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                         )

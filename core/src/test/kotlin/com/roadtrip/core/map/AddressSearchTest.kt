@@ -79,17 +79,49 @@ class AddressSearchTest {
     }
 
     @Test
-    fun `offline resolves to the needs-internet unavailable state ANDMAP-009`() = runTest {
+    fun `a transport failure resolves to the offline needs-internet state ANDMAP-009`() = runTest {
         api.offline = true
 
-        assertEquals(AddressSearchState.Unavailable, search.search("Moab", Role.PARENT))
+        assertEquals(AddressSearchState.Offline, search.search("Moab", Role.PARENT))
     }
 
     @Test
-    fun `a 503 geocode_unavailable answer resolves to the unavailable state ANDMAP-009`() = runTest {
+    fun `a 503 geocode_unavailable answer resolves to the offline state ANDMAP-009`() = runTest {
+        // Backend GSR-004: upstream geocoder unreachable — effectively offline.
         api.geocodeHandler = { throw ApiException(503, "geocode_unavailable", "upstream geocoder unreachable") }
 
-        assertEquals(AddressSearchState.Unavailable, search.search("Moab", Role.PARENT))
+        assertEquals(AddressSearchState.Offline, search.search("Moab", Role.PARENT))
+    }
+
+    @Test
+    fun `a 503 geocode_upstream_error answer resolves to the service-unavailable state ANDMAP-011`() = runTest {
+        // Backend GSR-006: geocoder reached but errored (e.g. 429) — online, so not needs-internet.
+        api.geocodeHandler = { throw ApiException(503, "geocode_upstream_error", "nominatim returned 429") }
+
+        assertEquals(AddressSearchState.ServiceUnavailable, search.search("Moab", Role.PARENT))
+    }
+
+    @Test
+    fun `another server error while online resolves to the service-unavailable state ANDMAP-011`() = runTest {
+        api.geocodeHandler = { throw ApiException(500, "internal", "boom") }
+
+        assertEquals(AddressSearchState.ServiceUnavailable, search.search("Moab", Role.PARENT))
+    }
+
+    @Test
+    fun `an unexpected failure surfaces as a distinct logged error state ANDMAP-011`() = runTest {
+        val boom = IllegalStateException("parse failure")
+        api.geocodeHandler = { throw boom }
+
+        val state = assertIs<AddressSearchState.Error>(search.search("Moab", Role.PARENT))
+        assertEquals(boom, state.cause)
+    }
+
+    @Test
+    fun `an unexpected 4xx ApiException surfaces as the error state ANDMAP-011`() = runTest {
+        api.geocodeHandler = { throw ApiException(400, "bad_request", "malformed query") }
+
+        assertIs<AddressSearchState.Error>(search.search("Moab", Role.PARENT))
     }
 
     @Test
