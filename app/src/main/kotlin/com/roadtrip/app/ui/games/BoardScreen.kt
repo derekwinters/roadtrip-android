@@ -33,6 +33,8 @@ import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.EndControl
+import com.roadtrip.core.games.GameEndControls
 import com.roadtrip.core.games.GameOfflineGate
 import com.roadtrip.core.games.GameStreamFollower
 import com.roadtrip.core.games.HangmanBoardStatus
@@ -292,7 +294,15 @@ fun BoardScreen(
                     Text(it, color = MaterialTheme.colorScheme.error)
                 }
 
-                if (isParticipant && currentGame.status == GameStatus.ACTIVE && gate.enabled) {
+                // Role- and type-aware end control (ANDGAME-018, backend GAME-015): a hangman
+                // guesser must not be able to end the game — only the creator/setter can.
+                val endControl = GameEndControls.gameEndControl(
+                    gameType = currentGame.gameType,
+                    isCreator = currentGame.createdBy == profile.id,
+                    isParticipant = isParticipant,
+                    isActive = currentGame.status == GameStatus.ACTIVE,
+                )
+                if (endControl != EndControl.NONE && gate.enabled) {
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick = {
                         scope.launch {
@@ -301,7 +311,7 @@ fun BoardScreen(
                             }.onSuccess { game = it }
                         }
                     }) {
-                        Text("Resign")
+                        Text(if (endControl == EndControl.END_GAME) "End game" else "Resign")
                     }
                 }
             }
