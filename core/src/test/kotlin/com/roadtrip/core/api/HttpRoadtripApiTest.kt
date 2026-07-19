@@ -1,6 +1,7 @@
 package com.roadtrip.core.api
 
 import com.roadtrip.core.common.Role
+import com.roadtrip.core.testing.GeocodeFixtures
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -325,10 +326,9 @@ class HttpRoadtripApiTest {
     }
 
     @Test
-    fun `geocode hits the proxy with the query and parses snake_case matches ANDMAP-008`() = runTest {
-        enqueueJson(
-            """{"results":[{"display_name":"Moab, Grand County, Utah","lat":38.5733,"lon":-109.5498}]}""",
-        )
+    fun `geocode parses the backend's bare-array body and snake_case matches ANDMAP-008`() = runTest {
+        // The real wire contract: a top-level JSON array, NOT a {results:[…]} envelope (GSR-002).
+        enqueueJson(GeocodeFixtures.SINGLE_MATCH_JSON)
 
         val matches = api().geocode("Moab UT")
 
@@ -336,6 +336,20 @@ class HttpRoadtripApiTest {
         assertEquals("Moab, Grand County, Utah", matches.single().displayName)
         assertEquals(38.5733, matches.single().lat)
         assertEquals(-109.5498, matches.single().lon)
+    }
+
+    @Test
+    fun `geocode decodes an empty array to an empty list, not an error ANDMAP-008`() = runTest {
+        enqueueJson(GeocodeFixtures.EMPTY_JSON)
+
+        assertEquals(emptyList(), api().geocode("Nowhereville ZZ"))
+    }
+
+    @Test
+    fun `geocode preserves order and count across a multi-element array ANDMAP-008`() = runTest {
+        enqueueJson(GeocodeFixtures.FIVE_MATCHES_JSON)
+
+        assertEquals(GeocodeFixtures.FIVE_MATCHES, api().geocode("Moab"))
     }
 
     @Test

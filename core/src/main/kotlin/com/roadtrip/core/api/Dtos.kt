@@ -103,12 +103,6 @@ data class GeocodeMatch(
     val lon: Double,
 )
 
-/** Response envelope of GET /api/geocode: at most 5 results. */
-@Serializable
-data class GeocodeResponse(
-    val results: List<GeocodeMatch> = emptyList(),
-)
-
 @Serializable
 data class ClientEvent(
     @SerialName("event_id") val eventId: String,
