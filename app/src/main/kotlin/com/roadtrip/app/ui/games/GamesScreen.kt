@@ -39,6 +39,7 @@ import com.roadtrip.core.api.GameStatus
 import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.games.GameLobbyLabeler
+import com.roadtrip.core.games.GameTypeChoices
 import com.roadtrip.core.games.GameOfflineGate
 import com.roadtrip.core.games.GamesLobbyLayout
 import com.roadtrip.core.games.LobbyReducer
@@ -279,13 +280,8 @@ fun GamesScreen(
     }
 }
 
-fun gameTypeLabel(type: GameType): String = when (type) {
-    GameType.CHESS -> "Chess"
-    GameType.CHECKERS -> "Checkers"
-    GameType.TICTACTOE -> "Tic-tac-toe"
-    GameType.ULTIMATE -> "Ultimate TTT"
-    GameType.HANGMAN -> "Hangman"
-}
+/** Display label for a game type, from the shared core choice model (AND-013). */
+fun gameTypeLabel(type: GameType): String = GameTypeChoices.labelFor(type)
 
 @Composable
 private fun GameRow(
