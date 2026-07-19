@@ -5,15 +5,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -109,32 +110,42 @@ fun CreateGameDialog(
         title = { Text("New game") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                // Single-choice selectors use the unmistakable filled + check SegmentedButton
+                // treatment (AND-013) instead of the low-contrast FilterChip selected state.
                 Text("Game", style = MaterialTheme.typography.labelLarge)
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    for (type in listOf(GameType.CHESS, GameType.CHECKERS, GameType.TICTACTOE)) {
-                        TypeChip(type, gameType == type, modifier = Modifier.padding(end = 4.dp)) { gameType = type }
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    for (type in listOf(GameType.ULTIMATE, GameType.HANGMAN)) {
-                        TypeChip(type, gameType == type, modifier = Modifier.padding(end = 4.dp)) { gameType = type }
+                val gameTypes = listOf(
+                    GameType.CHESS,
+                    GameType.CHECKERS,
+                    GameType.TICTACTOE,
+                    GameType.ULTIMATE,
+                    GameType.HANGMAN,
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    gameTypes.forEachIndexed { index, type ->
+                        SegmentedButton(
+                            selected = gameType == type,
+                            onClick = { gameType = type },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = gameTypes.size),
+                            label = { Text(gameTypeLabel(type)) },
+                        )
                     }
                 }
                 Spacer(Modifier.height(12.dp))
 
                 Text("Mode", style = MaterialTheme.typography.labelLarge)
-                Row {
-                    FilterChip(
-                        selected = mode == GameMode.OPEN,
-                        onClick = { mode = GameMode.OPEN },
-                        label = { Text("Open to anyone") },
-                        modifier = Modifier.padding(end = 4.dp),
-                    )
-                    FilterChip(
-                        selected = mode == GameMode.CHALLENGE,
-                        onClick = { mode = GameMode.CHALLENGE },
-                        label = { Text("Challenge") },
-                    )
+                val modes = listOf(
+                    GameMode.OPEN to "Open to anyone",
+                    GameMode.CHALLENGE to "Challenge",
+                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    modes.forEachIndexed { index, (value, label) ->
+                        SegmentedButton(
+                            selected = mode == value,
+                            onClick = { mode = value },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                            label = { Text(label) },
+                        )
+                    }
                 }
 
                 if (mode == GameMode.CHALLENGE) {
@@ -205,21 +216,6 @@ fun CreateGameDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
-    )
-}
-
-@Composable
-private fun TypeChip(
-    type: GameType,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(gameTypeLabel(type)) },
-        modifier = modifier,
     )
 }
 

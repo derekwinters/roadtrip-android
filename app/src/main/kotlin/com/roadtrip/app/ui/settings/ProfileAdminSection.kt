@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,6 +37,7 @@ import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.ProfilePatch
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.common.SystemClock
+import com.roadtrip.core.profiles.RoleChoices
 import com.roadtrip.core.sync.SyncTrigger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -217,18 +220,17 @@ private fun ProfileEditDialog(
                     label = { Text("Avatar (emoji)") },
                 )
                 Spacer(Modifier.padding(4.dp))
-                Row {
-                    FilterChip(
-                        selected = role == Role.KID,
-                        onClick = { role = Role.KID },
-                        label = { Text("Kid") },
-                        modifier = Modifier.padding(end = 4.dp),
-                    )
-                    FilterChip(
-                        selected = role == Role.PARENT,
-                        onClick = { role = Role.PARENT },
-                        label = { Text("Parent") },
-                    )
+                // Kid/Parent as an unmistakable single-choice SegmentedButton set (AND-013),
+                // shared with the profile picker via the core RoleChoices model.
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    RoleChoices.all.forEachIndexed { index, choice ->
+                        SegmentedButton(
+                            selected = role == choice.role,
+                            onClick = { role = choice.role },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = RoleChoices.all.size),
+                            label = { Text(choice.label) },
+                        )
+                    }
                 }
             }
         },

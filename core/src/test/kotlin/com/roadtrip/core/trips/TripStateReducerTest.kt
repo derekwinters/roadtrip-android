@@ -118,4 +118,24 @@ class TripStateReducerTest {
         api.endTrip(api.trips.first { it.status == TripStatus.ACTIVE }.id)
         assertEquals(TripStatus.ACTIVE, api.createTrip(null).status)
     }
+
+    @Test
+    fun `the active trip name is app-bar context only while a trip runs ANDTRIP-009`() {
+        // Active: the app bar overline carries the running trip's name.
+        val active = TripStateReducer.reduce(listOf(endedOld, this.active), Role.PARENT, online = true)
+        assertNull(active.bannerText)
+        assertEquals("Fall Colors", TripStateReducer.activeTripBarLabel(active))
+    }
+
+    @Test
+    fun `between trips and first launch surface no app-bar trip name ANDTRIP-009`() {
+        // Between trips: the "Browsing …" context stays in the TripStrip banner, not the app bar.
+        val between = TripStateReducer.reduce(listOf(endedOld, endedRecent), Role.KID, online = true)
+        assertEquals(TripStateReducer.NO_ACTIVE_TRIP_BANNER, between.bannerText)
+        assertNull(TripStateReducer.activeTripBarLabel(between))
+
+        // First-ever launch: nothing to show in the app bar either.
+        val firstLaunch = TripStateReducer.reduce(emptyList(), Role.PARENT, online = true)
+        assertNull(TripStateReducer.activeTripBarLabel(firstLaunch))
+    }
 }

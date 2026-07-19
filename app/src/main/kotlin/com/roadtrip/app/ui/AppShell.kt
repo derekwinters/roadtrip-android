@@ -1,5 +1,10 @@
 package com.roadtrip.app.ui
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -58,6 +64,8 @@ import com.roadtrip.app.ui.trips.StartTripDialog
 import com.roadtrip.app.ui.trips.TripsScreen
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.journal.NavTarget
+import com.roadtrip.core.navigation.NavMotion
+import com.roadtrip.core.navigation.NavMotionClassifier
 import com.roadtrip.core.notifications.Screen
 import com.roadtrip.core.notifications.VisibleContext
 import com.roadtrip.core.trips.PlannerState
@@ -172,7 +180,28 @@ fun AppShell(
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text(titleFor(currentRoute)) },
+                    title = {
+                        // The active trip's name rides as persistent context above the
+                        // per-screen title (ANDTRIP-009); it shows only while a trip runs and
+                        // ellipsizes when long so the app bar never overflows.
+                        val tripBarLabel = TripStateReducer.activeTripBarLabel(tripHome)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (tripBarLabel != null) {
+                                Text(
+                                    text = "On the road: $tripBarLabel",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                text = titleFor(currentRoute),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    },
                     actions = {
                         OnlineBadge(online)
                         IconButton(onClick = {
@@ -211,6 +240,73 @@ fun AppShell(
                     navController = navController,
                     startDestination = Routes.JOURNAL,
                     modifier = Modifier.weight(1f),
+                    // Material motion instead of the navigation-compose default 700 ms
+                    // crossfade (AND-011): fade-through between the five top-level tabs,
+                    // shared-axis X when drilling into or popping back out of a detail route.
+                    enterTransition = {
+                        when (
+                            NavMotionClassifier.motionFor(
+                                initialState.destination.route,
+                                targetState.destination.route,
+                            )
+                        ) {
+                            NavMotion.FADE_THROUGH ->
+                                fadeIn(tween(NAV_MOTION_MS)) +
+                                    scaleIn(tween(NAV_MOTION_MS), initialScale = FADE_THROUGH_SCALE)
+                            NavMotion.SHARED_AXIS_X ->
+                                slideIntoContainer(
+                                    AnimatedContentTransitionScope.SlideDirection.Start,
+                                    tween(NAV_MOTION_MS),
+                                ) + fadeIn(tween(NAV_MOTION_MS))
+                        }
+                    },
+                    exitTransition = {
+                        when (
+                            NavMotionClassifier.motionFor(
+                                initialState.destination.route,
+                                targetState.destination.route,
+                            )
+                        ) {
+                            NavMotion.FADE_THROUGH -> fadeOut(tween(NAV_MOTION_MS))
+                            NavMotion.SHARED_AXIS_X ->
+                                slideOutOfContainer(
+                                    AnimatedContentTransitionScope.SlideDirection.Start,
+                                    tween(NAV_MOTION_MS),
+                                ) + fadeOut(tween(NAV_MOTION_MS))
+                        }
+                    },
+                    popEnterTransition = {
+                        when (
+                            NavMotionClassifier.motionFor(
+                                initialState.destination.route,
+                                targetState.destination.route,
+                            )
+                        ) {
+                            NavMotion.FADE_THROUGH ->
+                                fadeIn(tween(NAV_MOTION_MS)) +
+                                    scaleIn(tween(NAV_MOTION_MS), initialScale = FADE_THROUGH_SCALE)
+                            NavMotion.SHARED_AXIS_X ->
+                                slideIntoContainer(
+                                    AnimatedContentTransitionScope.SlideDirection.End,
+                                    tween(NAV_MOTION_MS),
+                                ) + fadeIn(tween(NAV_MOTION_MS))
+                        }
+                    },
+                    popExitTransition = {
+                        when (
+                            NavMotionClassifier.motionFor(
+                                initialState.destination.route,
+                                targetState.destination.route,
+                            )
+                        ) {
+                            NavMotion.FADE_THROUGH -> fadeOut(tween(NAV_MOTION_MS))
+                            NavMotion.SHARED_AXIS_X ->
+                                slideOutOfContainer(
+                                    AnimatedContentTransitionScope.SlideDirection.End,
+                                    tween(NAV_MOTION_MS),
+                                ) + fadeOut(tween(NAV_MOTION_MS))
+                        }
+                    },
                 ) {
                 composable(Routes.JOURNAL) {
                     JournalScreen(container, profile) { target ->
@@ -365,11 +461,13 @@ fun AppShell(
 }
 
 /**
- * Slim strip under the top bar: shows the active trip's name while one runs, or the
- * persistent "No active road trip" banner (with the parent-only, online-only start
- * action) between trips and on first launch (ANDTRIP-001/002/004). When a planned trip
- * exists its card (rendered below the strip) carries the start action instead, and
- * parents without a plan get the "Plan the next trip" entry point (ANDTRIP-006).
+ * Slim strip under the top bar for the between-trips state only: the persistent "No active
+ * road trip" banner (with the parent-only, online-only start action) between trips and on
+ * first launch, plus the read-only "Browsing …" context (ANDTRIP-001/002/004). While a trip
+ * is active its name is persistent context in the top app bar instead (ANDTRIP-009), so the
+ * strip renders nothing. When a planned trip exists its card (rendered below the strip)
+ * carries the start action instead, and parents without a plan get the "Plan the next trip"
+ * entry point (ANDTRIP-006).
  */
 @Composable
 private fun TripStrip(
@@ -379,22 +477,10 @@ private fun TripStrip(
     onPlan: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
-    val banner = state.bannerText
-    if (banner == null) {
-        val name = state.viewedTrip?.name ?: return
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                text = "On the road: $name",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
-        }
-        return
-    }
+    // While a trip is active the app bar carries its name as persistent context
+    // (ANDTRIP-009), so the strip renders nothing here — only the between-trips banner
+    // (and its parent actions) below.
+    val banner = state.bannerText ?: return
 
     // The planned card (below the strip) owns "Road trip starts now" while a plan exists.
     val showGenericStart = state.startAction.visible && state.plannedTrip == null
@@ -457,3 +543,9 @@ private fun titleFor(route: String?): String = when {
     route == Routes.SETTINGS -> "Settings"
     else -> "Road Trip"
 }
+
+/** Navigation motion duration — Material-brisk, well under the 700 ms default (AND-011). */
+private const val NAV_MOTION_MS = 280
+
+/** Fade-through incoming scale: a slight grow-in that reads as a fade, not a spatial slide. */
+private const val FADE_THROUGH_SCALE = 0.92f
