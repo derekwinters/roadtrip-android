@@ -363,7 +363,7 @@ fun HangmanBoardView(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Wrong guesses: ${board.wrongCount}/6",
+            "Wrong guesses: ${board.wrongCount}/${board.maxWrong}",
             style = MaterialTheme.typography.labelMedium,
         )
         Spacer(Modifier.height(8.dp))

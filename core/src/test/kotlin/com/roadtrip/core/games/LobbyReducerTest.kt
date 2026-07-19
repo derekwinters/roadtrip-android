@@ -98,4 +98,75 @@ class LobbyReducerTest {
         updated = LobbyReducer.applyEvent(updated, finishedEvent)
         assertFalse(LobbyReducer.reduce(updated, me).myGames.any { it.game.id == "g-my-turn" })
     }
+
+    @Test
+    fun `hangman turn goes to the guesser on join and never alternates to the setter ANDGAME-015`() {
+        val setter = TestData.parent.id
+        val guesser = TestData.kid.id
+        val hangman = TestData.game(
+            id = "h1", type = GameType.HANGMAN, mode = GameMode.OPEN,
+            status = GameStatus.OPEN, createdBy = setter,
+        )
+
+        // Guesser joins → turn goes to the guesser (opponent), NOT the creator/setter.
+        val joined = LobbyReducer.applyEvent(
+            listOf(hangman),
+            TestData.event(
+                seq = 1, type = "game.joined",
+                payload = buildJsonObject {
+                    put("game_id", "h1")
+                    put("profile_id", guesser)
+                },
+                actorId = guesser,
+            ),
+        ).single()
+        assertEquals(GameStatus.ACTIVE, joined.status)
+        assertEquals(guesser, joined.turn)
+
+        // Guesser guesses a letter → the turn STAYS with the guesser (no alternation back
+        // to the setter, who must never guess).
+        val afterMove = LobbyReducer.applyEvent(
+            listOf(joined),
+            TestData.gameMoveEvent(
+                seq = 2, gameId = "h1", moveNo = 1,
+                move = buildJsonObject { put("letter", "E") }, actorId = guesser,
+            ),
+        ).single()
+        assertEquals(guesser, afterMove.turn)
+        assertEquals(1, afterMove.moveCount)
+    }
+
+    @Test
+    fun `non-hangman games still alternate the creator and opponent ANDGAME-015`() {
+        val creator = TestData.parent.id
+        val opponent = TestData.kid.id
+        val ttt = TestData.game(
+            id = "t1", type = GameType.TICTACTOE, mode = GameMode.OPEN,
+            status = GameStatus.OPEN, createdBy = creator,
+        )
+
+        // Join: the creator opens play.
+        val joined = LobbyReducer.applyEvent(
+            listOf(ttt),
+            TestData.event(
+                seq = 1, type = "game.joined",
+                payload = buildJsonObject {
+                    put("game_id", "t1")
+                    put("profile_id", opponent)
+                },
+                actorId = opponent,
+            ),
+        ).single()
+        assertEquals(creator, joined.turn)
+
+        // The creator moves → the turn alternates to the opponent.
+        val afterMove = LobbyReducer.applyEvent(
+            listOf(joined),
+            TestData.gameMoveEvent(
+                seq = 2, gameId = "t1", moveNo = 1,
+                move = buildJsonObject { put("cell", 4) }, actorId = creator,
+            ),
+        ).single()
+        assertEquals(opponent, afterMove.turn)
+    }
 }

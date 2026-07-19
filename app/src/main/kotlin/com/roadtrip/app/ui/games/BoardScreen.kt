@@ -29,12 +29,16 @@ import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.OfflineBanner
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.GameStatus
+import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.games.BoardState
 import com.roadtrip.core.games.GameOfflineGate
 import com.roadtrip.core.games.GameStreamFollower
+import com.roadtrip.core.games.HangmanBoardStatus
+import com.roadtrip.core.games.HangmanView
 import com.roadtrip.core.games.LobbyReducer
+import com.roadtrip.core.games.hangmanBoardStatus
 import com.roadtrip.core.games.MoveSubmitter
 import com.roadtrip.core.games.MoveOutcome
 import com.roadtrip.core.games.ReplayEngine
@@ -132,7 +136,19 @@ fun BoardScreen(
         val follower = followerHolder.value ?: return@LaunchedEffect
         while (isActive) {
             try {
-                follower.pollOnce()
+                val applied = follower.pollOnce()
+                // Hangman renders from the server `view`, which the event fold cannot
+                // reconstruct (redacted word); re-fetch the game so the mask, guessed set and
+                // wrong count refresh when the opponent's move arrives (ANDGAME-016).
+                if (applied > 0 && game?.gameType == GameType.HANGMAN) {
+                    val refreshed = withContext(Dispatchers.IO) {
+                        runCatching { container.api.getGame(gameId) }.getOrNull()
+                    }
+                    if (refreshed != null) {
+                        game = refreshed
+                        boardVersion++
+                    }
+                }
             } catch (e: Exception) {
                 delay(3_000)
             }
@@ -148,7 +164,16 @@ fun BoardScreen(
     val canMove = gate.enabled && isParticipant && myTurn &&
         currentGame?.status == GameStatus.ACTIVE
 
-    val board: BoardState? = remember(boardVersion, session) { session?.board() }
+    // Hangman is driven by the backend's viewer-aware `view` (ANDGAME-016): the word is
+    // redacted in the events feed for ongoing games, so it cannot be re-folded locally like
+    // the other four games. The remaining games rebuild from the recorded move stream.
+    val board: BoardState? = remember(boardVersion, session, currentGame) {
+        if (currentGame?.gameType == GameType.HANGMAN) {
+            HangmanView.toBoard(currentGame.view)
+        } else {
+            session?.board()
+        }
+    }
 
     fun submitMove(move: JsonElement) {
         val g = currentGame ?: return
@@ -205,7 +230,7 @@ fun BoardScreen(
             else -> {
                 Text(gameTypeLabel(currentGame.gameType), style = MaterialTheme.typography.titleLarge)
                 Text(
-                    statusLine(currentGame, isParticipant, myTurn),
+                    statusLine(currentGame, isParticipant, myTurn, profile.id),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -284,11 +309,28 @@ fun BoardScreen(
     }
 }
 
-private fun statusLine(game: Game, isParticipant: Boolean, myTurn: Boolean): String = when {
-    game.status == GameStatus.OPEN -> "Waiting for an opponent…"
-    game.status == GameStatus.FINISHED -> "Finished"
-    game.status == GameStatus.ABANDONED -> "Abandoned"
-    !isParticipant -> "Spectating — live"
-    myTurn -> "Your turn"
-    else -> "Waiting for the other player…"
+private fun statusLine(game: Game, isParticipant: Boolean, myTurn: Boolean, profileId: String): String {
+    // Hangman has a single guesser and never alternates, so it must not fall through to the
+    // generic "waiting for the other player" line (ANDGAME-017).
+    if (game.gameType == GameType.HANGMAN) return hangmanStatusLine(game, profileId)
+    return when {
+        game.status == GameStatus.OPEN -> "Waiting for an opponent…"
+        game.status == GameStatus.FINISHED -> "Finished"
+        game.status == GameStatus.ABANDONED -> "Abandoned"
+        !isParticipant -> "Spectating — live"
+        myTurn -> "Your turn"
+        else -> "Waiting for the other player…"
+    }
 }
+
+private fun hangmanStatusLine(game: Game, profileId: String): String =
+    when (hangmanBoardStatus(game, profileId)) {
+        HangmanBoardStatus.OPEN -> "Waiting for an opponent…"
+        HangmanBoardStatus.YOUR_TURN -> "Your turn — guess a letter"
+        HangmanBoardStatus.WAITING_FOR_GUESSER -> "You set the word — waiting for the guess…"
+        HangmanBoardStatus.YOU_WON -> "You won"
+        HangmanBoardStatus.YOU_LOST -> "You lost"
+        HangmanBoardStatus.SPECTATING -> "Spectating — live"
+        HangmanBoardStatus.FINISHED -> "Finished"
+        HangmanBoardStatus.ABANDONED -> "Abandoned"
+    }
