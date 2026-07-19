@@ -279,6 +279,13 @@ class ReplaySession(
 
     fun board(): BoardState = engine.stateAt(moves, index)
 
+    /**
+     * The single most-recent move to highlight at the current cursor (ANDGAME-024): the move at
+     * `index - 1`, or null at the initial position. Follows scrubbing/spectate for free since it
+     * reads the same [index] that [board] renders.
+     */
+    fun lastMove(gameType: GameType): LastMoveHighlight? = LastMove.lastMove(gameType, moves, index)
+
     fun play() {
         playing = true
     }
