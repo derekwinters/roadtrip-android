@@ -188,6 +188,51 @@ class JournalFeedTest {
     }
 
     @Test
+    fun `load-older cursor is the backdated high-seq low-client_ts entry not min seq ANDJRNL-005`() {
+        // A backdated entry synced late: highest seq, but the OLDEST client_ts in the page
+        // (offline post written early, accepted late — ANDJRNL-003, backend LOC-006).
+        val cached = listOf(
+            entry(10, JournalKind.POST, TestData.ts(600), "page top"),
+            entry(11, JournalKind.POST, TestData.ts(300), "middle"),
+            entry(99, JournalKind.POST, TestData.ts(0), "backdated, synced late"),
+        )
+
+        // The cursor must be the client_ts-oldest entry's seq (99), NOT min(seq) (10).
+        assertEquals(99L, JournalPagination.loadOlderCursor(cached))
+    }
+
+    @Test
+    fun `load-older cursor is the client_ts-oldest even when it has the smallest seq is not oldest ANDJRNL-005`() {
+        // A high-client_ts entry that happens to carry a LOW seq: it is newest by the feed's
+        // sort key, so it must NOT be chosen as the cursor.
+        val cached = listOf(
+            entry(2, JournalKind.POST, TestData.ts(9000), "low seq but newest by client_ts"),
+            entry(40, JournalKind.POST, TestData.ts(120), "oldest by client_ts"),
+            entry(41, JournalKind.POST, TestData.ts(500), "middle"),
+        )
+
+        assertEquals(40L, JournalPagination.loadOlderCursor(cached))
+    }
+
+    @Test
+    fun `load-older cursor is null for an empty cache so no query is issued ANDJRNL-005`() {
+        assertEquals(null, JournalPagination.loadOlderCursor(emptyList()))
+    }
+
+    @Test
+    fun `load-older cursor breaks client_ts ties by seq matching the server tuple ANDJRNL-003`() {
+        // Two entries at the same client_ts: the server's (client_ts, seq) comparison orders
+        // by seq, so the oldest is the smaller seq. The cursor must match that invariant.
+        val cached = listOf(
+            entry(70, JournalKind.POST, TestData.ts(300), "same ts, higher seq"),
+            entry(50, JournalKind.POST, TestData.ts(300), "same ts, lower seq"),
+            entry(80, JournalKind.POST, TestData.ts(900), "newer"),
+        )
+
+        assertEquals(50L, JournalPagination.loadOlderCursor(cached))
+    }
+
+    @Test
     fun `kid and parent profiles get identical journal capabilities ANDJRNL-006`() {
         val kidCaps = composer.capabilities(Role.KID)
         val parentCaps = composer.capabilities(Role.PARENT)

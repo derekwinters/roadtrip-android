@@ -108,6 +108,29 @@ object JournalFeedReducer {
     }
 }
 
+/**
+ * Pure pagination seam for the journal "load older" action (ANDJRNL-005).
+ *
+ * The feed — client and server — is ordered by `client_ts`, and the server's `before` cursor
+ * compares on the tuple `(client_ts, seq)` (backend JRNL-002). Backdated entries sync late with a
+ * high `seq` but an old `client_ts` (ANDJRNL-003), so `seq` order diverges from `client_ts` order
+ * and the smallest `seq` in the cache is generally NOT the oldest visible entry. Paging from
+ * `min(seq)` therefore points the cursor above the true client_ts fold, the server returns rows
+ * already cached, and load-older deadlocks. Paging from the client_ts-oldest cached entry keeps
+ * the cursor advancing.
+ */
+object JournalPagination {
+    /**
+     * Returns the `before` cursor (the `seq` of the oldest cached entry by `(client_ts, seq)`,
+     * ascending) for the next load-older page, or `null` when the cache is empty (no query).
+     * Uses the same [Timestamps.parse] the feed uses so ordering matches the render exactly.
+     */
+    fun loadOlderCursor(cached: List<JournalEntry>): Long? =
+        cached.minWithOrNull(
+            compareBy({ Timestamps.parse(it.ts) }, { it.seq }),
+        )?.seq
+}
+
 data class ComposerCapabilities(
     val canPost: Boolean,
     val minChars: Int,

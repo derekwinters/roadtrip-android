@@ -46,6 +46,7 @@ import com.roadtrip.core.journal.JournalComposer
 import com.roadtrip.core.journal.JournalDisplay
 import com.roadtrip.core.journal.JournalFeedItem
 import com.roadtrip.core.journal.JournalFeedReducer
+import com.roadtrip.core.journal.JournalPagination
 import com.roadtrip.core.journal.NavTarget
 import com.roadtrip.core.sync.SyncTrigger
 import kotlinx.coroutines.Dispatchers
@@ -91,7 +92,12 @@ fun JournalScreen(
     }
 
     fun loadOlder() {
-        val oldest = container.journalCache.read()?.value?.minOfOrNull { it.seq } ?: return
+        // Page from the oldest cached entry by the feed's sort key (client_ts, seq) — matching
+        // the server's (client_ts, seq) `before` comparison — not the global minimum seq, so the
+        // cursor keeps advancing when seq order diverges from client_ts order (ANDJRNL-005).
+        val oldest = JournalPagination.loadOlderCursor(
+            container.journalCache.read()?.value.orEmpty(),
+        ) ?: return
         loadingOlder = true
         scope.launch {
             withContext(Dispatchers.IO) {
