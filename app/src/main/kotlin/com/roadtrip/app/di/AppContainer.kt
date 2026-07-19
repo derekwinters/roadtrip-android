@@ -36,23 +36,29 @@ import com.roadtrip.core.common.Timestamps
 import com.roadtrip.core.games.LobbyRefresher
 import com.roadtrip.core.journal.JournalComposer
 import com.roadtrip.core.notifications.NotificationPipeline
+import com.roadtrip.core.notifications.Screen
 import com.roadtrip.core.notifications.VisibleContext
 import com.roadtrip.core.storage.CacheStore
 import com.roadtrip.core.storage.CursorStore
+import com.roadtrip.core.sync.ForegroundRefreshPolicy
 import com.roadtrip.core.sync.InboxPuller
 import com.roadtrip.core.sync.JournalCacheApplier
 import com.roadtrip.core.sync.OutboxQueue
+import com.roadtrip.core.sync.RefreshDecision
 import com.roadtrip.core.sync.SyncEngine
 import com.roadtrip.core.sync.SyncScheduler
 import com.roadtrip.core.sync.SyncTrigger
 import com.roadtrip.core.trips.TripScopedCacheStore
 import com.roadtrip.core.trips.TripStateReducer
 import java.io.IOException
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
@@ -248,6 +254,73 @@ class AppContainer(private val context: Context) {
 
     /** Reloads the games lobby; returns false (without spinning) when offline. */
     suspend fun reloadLobby(): Boolean = lobbyRefresher.reload()
+
+    // ---- foreground live-refresh loop (ANDSYNC-008) ------------------------------------------
+
+    /** Decides whether/when the foreground loop refreshes; pure + JVM-tested in core. */
+    private val foregroundRefreshPolicy = ForegroundRefreshPolicy()
+
+    @Volatile
+    private var lastForegroundRefreshAt: Instant? = null
+
+    /**
+     * While the app is visible and online, re-pulls the on-screen read model on a short cadence
+     * so new server data appears in place via [refreshTick] without navigating away or reopening
+     * (ANDSYNC-008). The cadence/gating decision lives in [foregroundRefreshPolicy]; this shell
+     * just applies it. It suspends (no polling) while backgrounded and backs off while offline.
+     */
+    private suspend fun runForegroundRefreshLoop() {
+        while (true) {
+            when (val decision = foregroundRefreshPolicy.decide(
+                visible = activityVisible.value,
+                online = onlineMonitor.online.value,
+                lastRefreshAt = lastForegroundRefreshAt,
+                now = clock.now(),
+            )) {
+                RefreshDecision.Idle ->
+                    // Cheaply park until the activity is started again — never spin in the background.
+                    activityVisible.first { it }
+                RefreshDecision.RefreshNow -> {
+                    foregroundRefresh()
+                    lastForegroundRefreshAt = clock.now()
+                }
+                is RefreshDecision.Wait -> delay(decision.delayMillis)
+            }
+        }
+    }
+
+    /**
+     * Cheap re-pull of just the currently-visible screen's read model (ANDSYNC-008); falls back to
+     * a normal foreground pass when no screen context is known. The game board self-updates via its
+     * long-poll (ANDGAME-005) and settings has no live feed, so both only bump the tick.
+     */
+    private suspend fun foregroundRefresh() {
+        val screen = if (activityVisible.value) visibleContext.value?.screen else null
+        if (screen == null) {
+            requestSync(SyncTrigger.FOREGROUND)
+            return
+        }
+        withContext(Dispatchers.IO) {
+            val now = clock.now()
+            when (screen) {
+                Screen.JOURNAL -> runCatching { mergeJournalPage(api.getJournal(limit = JOURNAL_PAGE)) }
+                Screen.MAP -> runCatching { mapCache.write(api.getMap(), now) }
+                Screen.GAMES -> runCatching { gamesCache.write(api.getGames(), now) }
+                Screen.CHECKLIST -> runCatching { checklistCache.write(api.getChecklist(), now) }
+                Screen.TRIP -> {
+                    runCatching {
+                        val trips = api.getTrips()
+                        tripsCache.write(trips, now)
+                        applyTripState(trips)
+                    }
+                    runCatching { tripSummaryCache.write(api.getTripSummary(), now) }
+                    runCatching { legsCache.write(api.getLegs(), now) }
+                }
+                Screen.GAME_BOARD, Screen.SETTINGS -> Unit
+            }
+            bumpTick()
+        }
+    }
 
     private suspend fun syncPass(trigger: SyncTrigger) = withContext(Dispatchers.IO) {
         try {
@@ -475,6 +548,8 @@ class AppContainer(private val context: Context) {
                 onlineMonitor.check()
             }
         }
+        // Foreground live-refresh: gated internally on activityVisible/online (ANDSYNC-008).
+        appScope.launch { runForegroundRefreshLoop() }
     }
 
     companion object {
