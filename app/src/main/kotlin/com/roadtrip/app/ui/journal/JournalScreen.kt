@@ -41,12 +41,12 @@ import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.app.ui.common.OfflineBanner
 import com.roadtrip.app.ui.common.formatFeedTime
 import com.roadtrip.core.api.Profile
-import com.roadtrip.core.journal.DeepLinkRouter
 import com.roadtrip.core.journal.JournalComposer
 import com.roadtrip.core.journal.JournalDisplay
 import com.roadtrip.core.journal.JournalFeedItem
 import com.roadtrip.core.journal.JournalFeedReducer
 import com.roadtrip.core.journal.JournalPagination
+import com.roadtrip.core.journal.JournalRowPresenter
 import com.roadtrip.core.journal.NavTarget
 import com.roadtrip.core.sync.SyncTrigger
 import kotlinx.coroutines.Dispatchers
@@ -150,45 +150,56 @@ fun JournalScreen(
 
 @Composable
 private fun JournalRow(item: JournalFeedItem, onNavigate: (NavTarget) -> Unit) {
-    val target = item.link?.let(DeepLinkRouter::route)
-    Card(
-        onClick = { target?.let(onNavigate) },
-        enabled = target != null,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            when (val display = item.display) {
-                is JournalDisplay.ManualPost -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(display.authorAvatar, display.authorName)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            display.authorName ?: "Someone",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(display.text, style = MaterialTheme.typography.bodyLarge)
-                    }
-                }
-                is JournalDisplay.StateCrossing -> IconRow(Icons.Filled.Flag, display.text)
-                is JournalDisplay.Stop -> IconRow(Icons.Filled.Place, display.text)
-                is JournalDisplay.GameResult -> IconRow(Icons.Filled.EmojiEvents, display.text)
-                is JournalDisplay.LegArrival -> IconRow(Icons.Filled.SportsEsports, display.text, useIcon = false)
-                is JournalDisplay.TripStarted -> EmojiRow("🚗", display.text)
-                is JournalDisplay.TripEnded -> EmojiRow("🎉", display.text)
-            }
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                Text(
-                    formatFeedTime(item.clientTs),
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                if (item.syncing) {
+    // A row's emphasis is independent of whether it deep-links; only navigability is gated by
+    // the link (ANDJRNL-008). Non-linkable rows (e.g. manual posts) render as a plain,
+    // full-opacity Card — never a disabled/greyed clickable card — while linked rows keep the
+    // clickable overload for navigation (ANDJRNL-004).
+    val presentation = JournalRowPresenter.present(item)
+    val target = presentation.navTarget
+    if (target != null) {
+        Card(
+            onClick = { onNavigate(target) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { JournalRowContent(item) }
+    } else {
+        Card(modifier = Modifier.fillMaxWidth()) { JournalRowContent(item) }
+    }
+}
+
+@Composable
+private fun JournalRowContent(item: JournalFeedItem) {
+    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        when (val display = item.display) {
+            is JournalDisplay.ManualPost -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(display.authorAvatar, display.authorName)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
                     Text(
-                        "syncing…",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
+                        display.authorName ?: "Someone",
+                        style = MaterialTheme.typography.labelLarge,
                     )
+                    Text(display.text, style = MaterialTheme.typography.bodyLarge)
                 }
+            }
+            is JournalDisplay.StateCrossing -> IconRow(Icons.Filled.Flag, display.text)
+            is JournalDisplay.Stop -> IconRow(Icons.Filled.Place, display.text)
+            is JournalDisplay.GameResult -> IconRow(Icons.Filled.EmojiEvents, display.text)
+            is JournalDisplay.LegArrival -> IconRow(Icons.Filled.SportsEsports, display.text, useIcon = false)
+            is JournalDisplay.TripStarted -> EmojiRow("🚗", display.text)
+            is JournalDisplay.TripEnded -> EmojiRow("🎉", display.text)
+        }
+        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            Text(
+                formatFeedTime(item.clientTs),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.weight(1f),
+            )
+            if (item.syncing) {
+                Text(
+                    "syncing…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
             }
         }
     }
