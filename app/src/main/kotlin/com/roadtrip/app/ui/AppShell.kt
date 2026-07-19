@@ -60,7 +60,6 @@ import com.roadtrip.app.ui.trips.ActivatePlannedTripDialog
 import com.roadtrip.app.ui.trips.DeletePlannedTripDialog
 import com.roadtrip.app.ui.trips.PlanTripDialog
 import com.roadtrip.app.ui.trips.PlannedTripCardView
-import com.roadtrip.app.ui.trips.StartTripDialog
 import com.roadtrip.app.ui.trips.TripsScreen
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.journal.NavTarget
@@ -102,7 +101,6 @@ fun AppShell(
     // thread on Dispatchers.IO so navigation never blocks a frame on Room I/O (AND-012); the
     // shell only observes already-loaded state.
     val tripHome: TripHomeState by remember(profile) { container.tripHomeFlow(profile) }.collectAsState()
-    var showStartDialog by remember { mutableStateOf(false) }
 
     // The planned "next trip" card state for the no-active-trip banner area
     // (ANDTRIP-006/007); the staged itinerary previews from its own cache, also read off the
@@ -207,15 +205,14 @@ fun AppShell(
             },
         ) { padding ->
             Column(modifier = Modifier.padding(padding)) {
-                // Active-trip indicator / persistent "No active road trip" banner with the
-                // parent-only start action (ANDTRIP-001/002/004).
+                // Single-line "No active road trip." banner with the parent-only "New trip →
+                // Settings" link between trips (ANDTRIP-001/002); nothing while a trip runs.
                 TripStrip(
                     state = tripHome,
-                    plannerState = plannerState,
-                    onStart = { showStartDialog = true },
-                    onPlan = { showPlanDialog = true },
-                    onOpenHistory = {
-                        navController.navigate(Routes.trips()) { launchSingleTop = true }
+                    // "New trip" navigates to Settings › Road trip where a trip is
+                    // created/started (ANDTRIP-002), mirroring the settings icon above.
+                    onNewTrip = {
+                        navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
                     },
                 )
                 // The planned-trip card rides the no-active-trip banner area: between
@@ -400,16 +397,6 @@ fun AppShell(
         }
     }
 
-    if (showStartDialog) {
-        StartTripDialog(
-            onConfirm = { name ->
-                showStartDialog = false
-                container.startTrip(name)
-            },
-            onDismiss = { showStartDialog = false },
-        )
-    }
-
     // ---- itinerary planner dialogs (ANDTRIP-006/008) ---------------------------------------
     if (showPlanDialog) {
         val editingTrip = plannerState.card?.trip
@@ -454,69 +441,44 @@ fun AppShell(
 }
 
 /**
- * Slim strip under the top bar for the between-trips state only: the persistent "No active
- * road trip" banner (with the parent-only, online-only start action) between trips and on
- * first launch, plus the read-only "Browsing …" context (ANDTRIP-001/002/004). While a trip
- * is active its name is persistent context in the top app bar instead (ANDTRIP-009), so the
- * strip renders nothing. When a planned trip exists its card (rendered below the strip)
- * carries the start action instead, and parents without a plan get the "Plan the next trip"
- * entry point (ANDTRIP-006).
+ * Slim, single-line strip under the top bar for the between-trips state only: the persistent
+ * "No active road trip." banner plus a right-aligned, parent-only "New trip" link that
+ * navigates to Settings › Road trip where a trip is created/started (ANDTRIP-001/002). While a
+ * trip is active its name is persistent context in the top app bar instead (ANDTRIP-009), so
+ * the strip renders nothing. The strip no longer hosts the start/plan/history buttons or the
+ * read-only "Browsing …" subtitle: start/end live in Settings, trip history in the Trip tab,
+ * and an existing plan carries its own actions on the planned-trip card below the strip
+ * (ANDTRIP-006). Kids see the banner without the link (trip creation is parent-only).
  */
 @Composable
 private fun TripStrip(
     state: TripHomeState,
-    plannerState: PlannerState,
-    onStart: () -> Unit,
-    onPlan: () -> Unit,
-    onOpenHistory: () -> Unit,
+    onNewTrip: () -> Unit,
 ) {
     // While a trip is active the app bar carries its name as persistent context
-    // (ANDTRIP-009), so the strip renders nothing here — only the between-trips banner
-    // (and its parent actions) below.
-    val banner = state.bannerText ?: return
-
-    // The planned card (below the strip) owns "Road trip starts now" while a plan exists.
-    val showGenericStart = state.startAction.visible && state.plannedTrip == null
+    // (ANDTRIP-009), so the reducer returns no strip here.
+    val strip = TripStateReducer.noActiveTripStrip(state) ?: return
 
     Surface(
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(banner, style = MaterialTheme.typography.labelLarge)
-                    val viewed = state.viewedTrip
-                    Text(
-                        when {
-                            viewed != null -> "Browsing \"${viewed.name}\" (read-only)"
-                            state.plannedTrip != null -> "Welcome! The next road trip is planned below."
-                            else -> "Welcome! Start your first road trip when you hit the road."
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-                if (state.viewedTrip != null) {
-                    TextButton(onClick = onOpenHistory) { Text("History") }
-                }
-                if (plannerState.planAction.visible) {
-                    TextButton(onClick = onPlan, enabled = plannerState.planAction.enabled) {
-                        Text("Plan the next trip")
-                    }
-                }
-                if (showGenericStart) {
-                    TextButton(onClick = onStart, enabled = state.startAction.enabled) {
-                        Text("Road trip starts now")
-                    }
-                }
-            }
-            if (showGenericStart && !state.startAction.enabled) {
-                Text(
-                    state.startAction.disabledReason.orEmpty(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                strip.banner,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (strip.newTripLinkVisible) {
+                TextButton(onClick = onNewTrip) { Text("New trip") }
             }
         }
     }

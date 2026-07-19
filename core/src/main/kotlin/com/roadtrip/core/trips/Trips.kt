@@ -62,13 +62,45 @@ data class TripHomeState(
 )
 
 /**
+ * The between-trips "No active road trip." strip's single-line presentation (ANDTRIP-002,
+ * issue #119): one banner line plus a right-aligned "New trip → Settings" link. The strip no
+ * longer hosts the start/plan/history actions or the read-only "Browsing …" subtitle — those
+ * live in Settings, the Trip-tab history, and the planned-trip card.
+ */
+data class NoActiveTripStrip(
+    /** One-line banner, ellipsized if ever needed. */
+    val banner: String,
+    /**
+     * Whether the right-aligned "New trip" link (→ Settings › Road trip) shows. Follows the
+     * parent-only start gating (`startAction.visible`): kids see the banner without the link.
+     */
+    val newTripLinkVisible: Boolean,
+)
+
+/**
  * Reduces the trips list + role + connectivity into the app's trip lifecycle state:
  * active trip, most-recently-ended fallback with the persistent banner, first-launch
  * welcome, and the parent-only online-only start/end affordances (ANDTRIP-001/002/004).
  */
 object TripStateReducer {
     const val NO_ACTIVE_TRIP_BANNER = "No active road trip"
+
+    /** The between-trips strip's single-line banner (ANDTRIP-002, issue #119). */
+    const val NO_ACTIVE_TRIP_STRIP_BANNER = "No active road trip."
     const val OFFLINE_REASON = "Starting or ending a road trip needs the trip server"
+
+    /**
+     * The between-trips strip's presentation (ANDTRIP-002): a single banner line plus the
+     * parent-only "New trip → Settings" link. Null while a trip is active — the strip renders
+     * nothing then (the active trip's name lives in the app bar, ANDTRIP-009).
+     */
+    fun noActiveTripStrip(state: TripHomeState): NoActiveTripStrip? {
+        if (state.bannerText == null) return null
+        return NoActiveTripStrip(
+            banner = NO_ACTIVE_TRIP_STRIP_BANNER,
+            newTripLinkVisible = state.startAction.visible,
+        )
+    }
 
     /** Active trip, else the most recently ended one (the server's default read scope). */
     fun viewedTrip(trips: List<Trip>): Trip? =
