@@ -1,5 +1,6 @@
 package com.roadtrip.core.storage
 
+import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.sync.OutboxEntry
 import java.time.Instant
@@ -55,4 +56,16 @@ interface SelectedProfileStore {
 interface TrackerConfigStore {
     fun enabledBy(): String?
     fun setEnabledBy(profileId: String?)
+}
+
+/**
+ * Per-`(profileId, gameType)` "confirm move before making it" preference (ANDGAME-022).
+ * Client-side only, persisted locally across app restarts. [get] returns the profile's last-set
+ * value for that game type, or null when the pair was never set (the caller resolves the ON
+ * default via `ConfirmMovePreference.resolve`). [set] is last-write-wins and must not affect any
+ * other `(profileId, gameType)` pair.
+ */
+interface ConfirmMoveStore {
+    fun get(profileId: String, gameType: GameType): Boolean?
+    fun set(profileId: String, gameType: GameType, confirm: Boolean)
 }

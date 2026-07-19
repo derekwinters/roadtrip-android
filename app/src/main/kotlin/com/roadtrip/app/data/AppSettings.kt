@@ -7,11 +7,14 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.RoadtripJson
 import com.roadtrip.core.common.UuidIdGenerator
+import com.roadtrip.core.games.ConfirmMovePreference
 import com.roadtrip.core.settings.ServerAddress
 import com.roadtrip.core.settings.ServerAddressResult
+import com.roadtrip.core.storage.ConfirmMoveStore
 import com.roadtrip.core.storage.SelectedProfileStore
 import com.roadtrip.core.storage.TrackerConfigStore
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +39,7 @@ private val Context.roadtripDataStore by preferencesDataStore(name = "roadtrip_s
 class AppSettings(
     private val context: Context,
     private val scope: CoroutineScope,
-) : SelectedProfileStore, TrackerConfigStore {
+) : SelectedProfileStore, TrackerConfigStore, ConfirmMoveStore {
 
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
@@ -71,6 +74,14 @@ class AppSettings(
     /** Profile id of the parent who enabled the tracker on this device (ANDLOC-003/008). */
     private val _trackerEnabledBy = MutableStateFlow(initial[Keys.TRACKER_ENABLED_BY])
     val trackerEnabledBy: StateFlow<String?> = _trackerEnabledBy.asStateFlow()
+
+    // Per-(profileId, gameType) "confirm move" toggle (ANDGAME-022). Keys are dynamic
+    // (`confirm_move:<profileId>:<gameType>`) so they can't be fixed StateFlows; seed a synchronous
+    // mirror from the startup snapshot and update it on set, persisting async like every other setting.
+    private val confirmMove: MutableMap<String, Boolean> = initial.asMap()
+        .asSequence()
+        .filter { (k, v) -> k.name.startsWith("confirm_move:") && v is Boolean }
+        .associateTo(mutableMapOf()) { (k, v) -> k.name to (v as Boolean) }
 
     /** Stable per-install id sent as device_id in sync batches. */
     val deviceId: String = initial[Keys.DEVICE_ID] ?: UuidIdGenerator.newId().also { id ->
@@ -109,6 +120,17 @@ class AppSettings(
                 prefs[Keys.TRACKER_ENABLED_BY] = profileId
             }
         }
+    }
+
+    // ---- ConfirmMoveStore (ANDGAME-022) ------------------------------------------------
+
+    override fun get(profileId: String, gameType: GameType): Boolean? =
+        confirmMove[ConfirmMovePreference.key(profileId, gameType)]
+
+    override fun set(profileId: String, gameType: GameType, confirm: Boolean) {
+        val key = ConfirmMovePreference.key(profileId, gameType)
+        confirmMove[key] = confirm
+        persist { it[booleanPreferencesKey(key)] = confirm }
     }
 
     // ---- SelectedProfileStore ----------------------------------------------------------

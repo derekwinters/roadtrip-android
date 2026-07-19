@@ -2,15 +2,18 @@ package com.roadtrip.app.ui.games
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,6 +36,7 @@ import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.ConfirmMovePreference
 import com.roadtrip.core.games.EndControl
 import com.roadtrip.core.games.GameEndControls
 import com.roadtrip.core.games.GameOfflineGate
@@ -77,6 +81,18 @@ fun BoardScreen(
     var moveError by remember { mutableStateOf<String?>(null) }
     var boardVersion by remember { mutableIntStateOf(0) }
     var selectedSquare by remember { mutableStateOf<String?>(null) }
+
+    // Per-(profile, gameType) "confirm move" toggle (ANDGAME-022), settable on the board mid-game.
+    // Resolved from the local ConfirmMoveStore with the ON default the first time this profile plays
+    // this game type; re-initialised only when the game type is known (stable for a game's lifetime).
+    var confirmMoves by remember(game?.gameType) {
+        mutableStateOf(
+            game?.let { ConfirmMovePreference.resolve(container.settings.get(profile.id, it.gameType)) }
+                ?: ConfirmMovePreference.DEFAULT,
+        )
+    }
+    // The move awaiting an explicit Confirm when the toggle is on (null == nothing staged).
+    var stagedMove by remember { mutableStateOf<JsonElement?>(null) }
 
     // profileId -> display name for the player-identity legend (ANDGAME-020); same profiles-cache
     // read the lobby uses (ANDGAME-009), with a "Someone" fallback resolved inside PlayerLegend.
@@ -172,6 +188,9 @@ fun BoardScreen(
     val myTurn = currentGame?.turn == profile.id
     val canMove = gate.enabled && isParticipant && myTurn &&
         currentGame?.status == GameStatus.ACTIVE
+    // While a move is staged for confirmation the board is inert so a second move can't be started
+    // before the first is confirmed or cancelled (ANDGAME-022).
+    val canInteract = canMove && stagedMove == null
 
     // Hangman is driven by the backend's viewer-aware `view` (ANDGAME-016): the word is
     // redacted in the events feed for ongoing games, so it cannot be re-folded locally like
@@ -205,6 +224,24 @@ fun BoardScreen(
         }
     }
 
+    // ANDGAME-022: the confirm gate sits BEFORE the optimistic submit (mirrors the pure
+    // MoveConfirmGate seam). Toggle off -> submit immediately as before; on -> stage the move and
+    // wait for an explicit Confirm. Cancel discards the staged move and restores the pre-move board.
+    fun requestMove(move: JsonElement) {
+        if (confirmMoves) stagedMove = move else submitMove(move)
+    }
+
+    fun confirmStagedMove() {
+        val move = stagedMove ?: return
+        stagedMove = null
+        submitMove(move)
+    }
+
+    fun cancelStagedMove() {
+        stagedMove = null
+        selectedSquare = null
+    }
+
     fun tapSquare(square: String, occupied: Boolean) {
         val from = selectedSquare
         when {
@@ -216,7 +253,7 @@ fun BoardScreen(
                     put("to", square)
                 }
                 selectedSquare = null
-                submitMove(move)
+                requestMove(move)
             }
         }
     }
@@ -242,6 +279,30 @@ fun BoardScreen(
                     statusLine(currentGame, isParticipant, myTurn, profile.id),
                     style = MaterialTheme.typography.bodyMedium,
                 )
+
+                // Per-(profile, gameType) confirm-move toggle, on the board itself (ANDGAME-022).
+                // Available to an active-game participant mid-game; flipping it saves the sticky
+                // last-write-wins value for this profile+type and discards any pending stage when
+                // switched off.
+                if (isParticipant && currentGame.status == GameStatus.ACTIVE) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Confirm move before making it",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = confirmMoves,
+                            onCheckedChange = { checked ->
+                                confirmMoves = checked
+                                container.settings.set(profile.id, currentGame.gameType, checked)
+                                if (!checked) stagedMove = null
+                            },
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(12.dp))
 
                 // Board occupies the remaining height; grid boards bound to a square that
@@ -257,25 +318,25 @@ fun BoardScreen(
                         is BoardState.ChessBoard -> ChessBoardView(
                             board = board,
                             selectedSquare = selectedSquare,
-                            enabled = canMove,
+                            enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
                         )
                         is BoardState.CheckersBoard -> CheckersBoardView(
                             board = board,
                             selectedSquare = selectedSquare,
-                            enabled = canMove,
+                            enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
                         )
                         is BoardState.TttBoard -> TttBoardView(
                             board = board,
-                            enabled = canMove,
-                            onCellTap = { cell -> submitMove(buildJsonObject { put("cell", cell) }) },
+                            enabled = canInteract,
+                            onCellTap = { cell -> requestMove(buildJsonObject { put("cell", cell) }) },
                         )
                         is BoardState.UltimateBoard -> UltimateBoardView(
                             board = board,
-                            enabled = canMove,
+                            enabled = canInteract,
                             onCellTap = { subBoard, cell ->
-                                submitMove(
+                                requestMove(
                                     buildJsonObject {
                                         put("board", subBoard)
                                         put("cell", cell)
@@ -290,9 +351,9 @@ fun BoardScreen(
                         ) {
                             HangmanBoardView(
                                 board = board,
-                                enabled = canMove,
+                                enabled = canInteract,
                                 onGuess = { letter ->
-                                    submitMove(buildJsonObject { put("letter", letter.toString()) })
+                                    requestMove(buildJsonObject { put("letter", letter.toString()) })
                                 },
                             )
                         }
@@ -302,6 +363,19 @@ fun BoardScreen(
                 moveError?.let {
                     Spacer(Modifier.height(8.dp))
                     Text(it, color = MaterialTheme.colorScheme.error)
+                }
+
+                // Staged-move confirmation controls (ANDGAME-022): shown only while a move waits
+                // for confirmation. Confirm submits it exactly once through the same optimistic
+                // path; Cancel discards it and restores the pre-move board (clears the selection).
+                if (stagedMove != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Confirm your move?", style = MaterialTheme.typography.bodyMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { confirmStagedMove() }) { Text("Confirm") }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { cancelStagedMove() }) { Text("Cancel") }
+                    }
                 }
 
                 // Role- and type-aware end control (ANDGAME-018, backend GAME-015): a hangman

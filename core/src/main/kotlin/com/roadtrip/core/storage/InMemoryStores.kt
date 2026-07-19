@@ -1,6 +1,8 @@
 package com.roadtrip.core.storage
 
+import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
+import com.roadtrip.core.games.ConfirmMovePreference
 import com.roadtrip.core.sync.OutboxEntry
 import java.time.Instant
 
@@ -63,5 +65,17 @@ class InMemoryTrackerConfigStore : TrackerConfigStore {
 
     override fun setEnabledBy(profileId: String?) {
         enabledBy = profileId
+    }
+}
+
+class InMemoryConfirmMoveStore : ConfirmMoveStore {
+    // Keyed by the same builder the app-module store uses, so scoping is exercised end-to-end.
+    private val values = mutableMapOf<String, Boolean>()
+
+    override fun get(profileId: String, gameType: GameType): Boolean? =
+        values[ConfirmMovePreference.key(profileId, gameType)]
+
+    override fun set(profileId: String, gameType: GameType, confirm: Boolean) {
+        values[ConfirmMovePreference.key(profileId, gameType)] = confirm
     }
 }
