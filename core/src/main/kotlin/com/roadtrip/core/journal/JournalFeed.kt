@@ -51,16 +51,20 @@ object JournalFeedReducer {
         serverEntries: List<JournalEntry>,
         pendingOutbox: List<OutboxEntry>,
         selfProfile: Profile?,
+        profiles: Map<String, Profile> = emptyMap(),
     ): List<JournalFeedItem> {
         val fromServer = serverEntries.map { entry ->
             JournalFeedItem(
                 key = "server-${entry.seq}",
                 clientTs = Timestamps.parse(entry.ts),
-                display = displayOf(entry),
+                display = displayOf(entry, profiles),
                 syncing = entry.syncing,
                 link = entry.link,
             )
         }
+        // Resolve the poster's own attribution from the live cache too, so a pending post
+        // reflects an avatar/name change the author just made (ANDJRNL-007).
+        val self = selfProfile?.id?.let { profiles[it] } ?: selfProfile
         val fromOutbox = pendingOutbox
             .filter { it.type == OutboxEntry.TYPE_JOURNAL_POST }
             .map { entry ->
@@ -68,8 +72,8 @@ object JournalFeedReducer {
                     key = "outbox-${entry.eventId}",
                     clientTs = entry.clientTs,
                     display = JournalDisplay.ManualPost(
-                        authorName = selfProfile?.name,
-                        authorAvatar = selfProfile?.avatar,
+                        authorName = self?.name,
+                        authorAvatar = self?.avatar,
                         text = entry.payload["text"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                     ),
                     syncing = true,
@@ -80,12 +84,21 @@ object JournalFeedReducer {
         return (fromServer + fromOutbox).sortedByDescending { it.clientTs }
     }
 
-    fun displayOf(entry: JournalEntry): JournalDisplay = when (entry.kind) {
-        JournalKind.POST -> JournalDisplay.ManualPost(
-            authorName = entry.actor?.name,
-            authorAvatar = entry.actor?.avatar,
-            text = entry.text,
-        )
+    /**
+     * @param profiles current profiles cache (id -> profile). Actor-attributed kinds resolve
+     * their avatar/name from here by actor id so a profile changing its avatar updates every
+     * one of that author's rows; the embedded [JournalEntry.actor] snapshot is only a fallback
+     * for profiles that aren't cached (ANDJRNL-007).
+     */
+    fun displayOf(entry: JournalEntry, profiles: Map<String, Profile> = emptyMap()): JournalDisplay = when (entry.kind) {
+        JournalKind.POST -> {
+            val author = entry.actor?.id?.let { profiles[it] } ?: entry.actor
+            JournalDisplay.ManualPost(
+                authorName = author?.name,
+                authorAvatar = author?.avatar,
+                text = entry.text,
+            )
+        }
         JournalKind.STATE_CROSSING -> JournalDisplay.StateCrossing(entry.text, entry.link?.stateCode)
         JournalKind.STOP -> JournalDisplay.Stop(entry.text, entry.link)
         JournalKind.GAME_RESULT -> JournalDisplay.GameResult(entry.text, entry.link?.gameId)
