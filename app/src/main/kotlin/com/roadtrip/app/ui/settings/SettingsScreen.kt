@@ -79,7 +79,9 @@ fun SettingsScreen(
     ) {
         // ---- connection (everyone; kids read-only per spec 07) --------------------------
         SectionHeader("Connection")
-        val serverUrl by container.settings.serverUrl.collectAsState()
+        // Settings is only reachable past the first-run gate (AND-014), so the address is set;
+        // coerce the nullable setting for display/editing.
+        val serverUrl = container.settings.serverUrl.collectAsState().value.orEmpty()
         if (profile.role == Role.PARENT) {
             var urlText by remember { mutableStateOf(serverUrl) }
             OutlinedTextField(

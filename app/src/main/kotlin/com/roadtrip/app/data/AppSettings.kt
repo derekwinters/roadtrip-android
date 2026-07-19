@@ -10,6 +10,8 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.api.RoadtripJson
 import com.roadtrip.core.common.UuidIdGenerator
+import com.roadtrip.core.settings.ServerAddress
+import com.roadtrip.core.settings.ServerAddressResult
 import com.roadtrip.core.storage.SelectedProfileStore
 import com.roadtrip.core.storage.TrackerConfigStore
 import kotlinx.coroutines.CoroutineScope
@@ -46,8 +48,11 @@ class AppSettings(
 
     private val initial: Preferences = runBlocking { context.roadtripDataStore.data.first() }
 
-    private val _serverUrl = MutableStateFlow(initial[Keys.SERVER_URL] ?: DEFAULT_SERVER_URL)
-    val serverUrl: StateFlow<String> = _serverUrl.asStateFlow()
+    // No baked-in default (AND-014): a fresh install has nothing stored, so `serverUrl` stays
+    // null until the first-run setup gate saves a validated address. Null/blank means
+    // "not configured yet" — the app must prompt before any API call.
+    private val _serverUrl = MutableStateFlow(initial[Keys.SERVER_URL])
+    val serverUrl: StateFlow<String?> = _serverUrl.asStateFlow()
 
     private val _selectedProfile = MutableStateFlow(
         initial[Keys.SELECTED_PROFILE]?.let { json ->
@@ -72,11 +77,17 @@ class AppSettings(
         persist { it[Keys.DEVICE_ID] = id }
     }
 
+    /**
+     * Persists a server address, but only after it validates as a well-formed http(s) URL
+     * (AND-015). Invalid input is ignored here — callers validate through the same
+     * [ServerAddress] seam first and surface the rejection reason to the user.
+     */
     fun setServerUrl(url: String) {
-        val cleaned = url.trim()
-        if (cleaned.isEmpty()) return
-        _serverUrl.value = cleaned
-        persist { it[Keys.SERVER_URL] = cleaned }
+        val result = ServerAddress.validate(url)
+        if (result is ServerAddressResult.Valid) {
+            _serverUrl.value = result.normalizedUrl
+            persist { it[Keys.SERVER_URL] = result.normalizedUrl }
+        }
     }
 
     // ---- TrackerConfigStore --------------------------------------------------------------
@@ -119,10 +130,5 @@ class AppSettings(
         scope.launch {
             context.roadtripDataStore.edit { mutate(it) }
         }
-    }
-
-    companion object {
-        /** Car-hotspot VPN default; editable in settings (docs/spec/07-settings.md). */
-        const val DEFAULT_SERVER_URL = "http://10.0.0.2:8080"
     }
 }

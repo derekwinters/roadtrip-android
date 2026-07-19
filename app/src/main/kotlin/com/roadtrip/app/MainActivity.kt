@@ -18,7 +18,9 @@ import com.roadtrip.core.location.TrackerRestartPolicy
 import com.roadtrip.app.notifications.NavTargetExtras
 import com.roadtrip.app.ui.AppShell
 import com.roadtrip.app.ui.profile.ProfilePickerScreen
+import com.roadtrip.app.ui.setup.ServerSetupScreen
 import com.roadtrip.core.journal.NavTarget
+import com.roadtrip.core.settings.ServerAddress
 import com.roadtrip.core.sync.SyncTrigger
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -40,13 +42,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface {
+                    val serverUrl by container.settings.serverUrl.collectAsState()
                     val profile by container.settings.selectedProfile.collectAsState()
                     val current = profile
-                    if (current == null) {
+                    when {
+                        // AND-014: first launch with no stored server address prompts for one
+                        // before the profile picker and before any API call.
+                        ServerAddress.needsSetup(serverUrl) -> ServerSetupScreen(container)
                         // AND-001: launch shows the profile picker until one is selected.
-                        ProfilePickerScreen(container)
-                    } else {
-                        AppShell(
+                        current == null -> ProfilePickerScreen(container)
+                        else -> AppShell(
                             container = container,
                             profile = current,
                             pendingNavTarget = pendingNavTarget,
