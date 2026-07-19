@@ -33,6 +33,7 @@ import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.api.TripSummary
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.common.Timestamps
+import com.roadtrip.core.games.LobbyRefresher
 import com.roadtrip.core.journal.JournalComposer
 import com.roadtrip.core.notifications.NotificationPipeline
 import com.roadtrip.core.notifications.VisibleContext
@@ -229,6 +230,24 @@ class AppContainer(private val context: Context) {
             }
         }
     }
+
+    /**
+     * Shared reload behind the games lobby's pull-to-refresh gesture and its header refresh
+     * button (ANDGAME-010): request a foreground sync and refetch the games cache. Offline is
+     * short-circuited in [LobbyRefresher] so the indicator never spins indefinitely.
+     */
+    private val lobbyRefresher = LobbyRefresher(
+        isOnline = { onlineMonitor.online.value },
+        requestForegroundSync = { requestSync(SyncTrigger.FOREGROUND) },
+        fetchGames = { withContext(Dispatchers.IO) { api.getGames() } },
+        storeGames = { games ->
+            gamesCache.write(games, clock.now())
+            bumpTick()
+        },
+    )
+
+    /** Reloads the games lobby; returns false (without spinning) when offline. */
+    suspend fun reloadLobby(): Boolean = lobbyRefresher.reload()
 
     private suspend fun syncPass(trigger: SyncTrigger) = withContext(Dispatchers.IO) {
         try {

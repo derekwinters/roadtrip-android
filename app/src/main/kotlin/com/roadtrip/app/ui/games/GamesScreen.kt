@@ -1,6 +1,7 @@
 package com.roadtrip.app.ui.games
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,13 +10,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,7 +38,9 @@ import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.GameStatus
 import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
+import com.roadtrip.core.games.GameLobbyLabeler
 import com.roadtrip.core.games.GameOfflineGate
+import com.roadtrip.core.games.GamesLobbyLayout
 import com.roadtrip.core.games.LobbyReducer
 import com.roadtrip.core.sync.SyncTrigger
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +51,11 @@ import kotlinx.coroutines.withContext
  * Games lobby (ANDGAME-001): open games to join, my games with turn indicator, incoming
  * challenges, plus spectate and replay entries. Actions are online-only with an
  * explanatory banner offline (ANDGAME-008); cached replays keep working.
+ *
+ * Pull-to-refresh and a header refresh button share one reload path (ANDGAME-010); rows attribute
+ * the creator/opponent by name (ANDGAME-009); the list clears the FAB with a bottom inset (ANDGAME-011).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamesScreen(
     container: AppContainer,
@@ -58,8 +69,13 @@ fun GamesScreen(
     val scope = rememberCoroutineScope()
     var showCreateDialog by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    var refreshing by remember { mutableStateOf(false) }
 
     val games: List<Game> = remember(tick) { container.gamesCache.read()?.value.orEmpty() }
+    // profileId -> display name, resolved from the cache for row attribution (ANDGAME-009).
+    val names: Map<String, String> = remember(tick) {
+        container.profilesCache.read()?.value.orEmpty().associate { it.id to it.name }
+    }
     val lobby = remember(games) { LobbyReducer.reduce(games, profile.id) }
     val spectatable = remember(games) {
         games.filter {
@@ -69,6 +85,20 @@ fun GamesScreen(
     val finished = remember(games) { games.filter { it.status == GameStatus.FINISHED } }
 
     val gate = GameOfflineGate.evaluate(online)
+
+    // Shared reload for both the pull gesture and the header button (ANDGAME-010). Offline is
+    // short-circuited inside reloadLobby(), so the indicator dismisses instead of spinning.
+    fun refresh() {
+        if (refreshing) return
+        refreshing = true
+        scope.launch {
+            try {
+                container.reloadLobby()
+            } finally {
+                refreshing = false
+            }
+        }
+    }
 
     fun join(game: Game) {
         scope.launch {
@@ -94,6 +124,21 @@ fun GamesScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (!gate.enabled) OfflineBanner(gate.reason ?: "Offline")
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Games",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { refresh() }, enabled = !refreshing) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                }
+            }
+
             actionError?.let {
                 Text(
                     it,
@@ -102,8 +147,19 @@ fun GamesScreen(
                 )
             }
 
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = { refresh() },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            ) {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize(),
+                // Bottom inset so the last row's action clears the FAB in every section (ANDGAME-011).
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    bottom = GamesLobbyLayout.FAB_CLEARANCE_DP.dp,
+                ),
             ) {
                 // License plate bingo: the whole family fills one card together; spots
                 // queue offline, so the entry never needs the online gate (ANDBNG-001).
@@ -133,7 +189,9 @@ fun GamesScreen(
                 }
                 items(lobby.myGames, key = { "my-${it.game.id}" }) { myGame ->
                     GameRow(
-                        game = myGame.game,
+                        title = GameLobbyLabeler.myGameTitle(
+                            myGame.game, profile.id, gameTypeLabel(myGame.game.gameType), names,
+                        ),
                         trailing = if (myGame.myTurn) "Your turn" else "Waiting…",
                         highlight = myGame.myTurn,
                         actionLabel = "Open",
@@ -148,7 +206,7 @@ fun GamesScreen(
                 }
                 items(lobby.incomingChallenges, key = { "ch-${it.id}" }) { game ->
                     GameRow(
-                        game = game,
+                        title = GameLobbyLabeler.creatorTitle(game, gameTypeLabel(game.gameType), names),
                         trailing = "Challenge",
                         highlight = true,
                         actionLabel = "Accept",
@@ -163,7 +221,7 @@ fun GamesScreen(
                 }
                 items(lobby.openGames, key = { "open-${it.id}" }) { game ->
                     GameRow(
-                        game = game,
+                        title = GameLobbyLabeler.creatorTitle(game, gameTypeLabel(game.gameType), names),
                         trailing = "Open to anyone",
                         highlight = false,
                         actionLabel = "Join",
@@ -178,7 +236,7 @@ fun GamesScreen(
                 }
                 items(spectatable, key = { "spec-${it.id}" }) { game ->
                     GameRow(
-                        game = game,
+                        title = GameLobbyLabeler.creatorTitle(game, gameTypeLabel(game.gameType), names),
                         trailing = "Live",
                         highlight = false,
                         actionLabel = "Spectate",
@@ -193,7 +251,7 @@ fun GamesScreen(
                 }
                 items(finished, key = { "fin-${it.id}" }) { game ->
                     GameRow(
-                        game = game,
+                        title = GameLobbyLabeler.creatorTitle(game, gameTypeLabel(game.gameType), names),
                         trailing = "Finished",
                         highlight = false,
                         actionLabel = "Replay",
@@ -202,6 +260,7 @@ fun GamesScreen(
                         onAction = { onOpenReplay(game.id) },
                     )
                 }
+            }
             }
         }
     }
@@ -230,7 +289,7 @@ fun gameTypeLabel(type: GameType): String = when (type) {
 
 @Composable
 private fun GameRow(
-    game: Game,
+    title: String,
     trailing: String,
     highlight: Boolean,
     actionLabel: String,
@@ -243,7 +302,7 @@ private fun GameRow(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(gameTypeLabel(game.gameType), style = MaterialTheme.typography.titleSmall)
+                Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(
                     trailing,
                     style = MaterialTheme.typography.labelMedium,
