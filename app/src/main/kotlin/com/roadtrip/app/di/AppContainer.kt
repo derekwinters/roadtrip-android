@@ -35,6 +35,7 @@ import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.common.Timestamps
 import com.roadtrip.core.games.LobbyRefresher
 import com.roadtrip.core.journal.JournalComposer
+import com.roadtrip.core.map.EndLegControl
 import com.roadtrip.core.notifications.NotificationPipeline
 import com.roadtrip.core.notifications.VisibleContext
 import com.roadtrip.core.storage.CacheStore
@@ -521,6 +522,38 @@ class AppContainer(private val context: Context) {
 
     fun removeDestination(id: String, trip: String? = null) = destinationMutation(trip) {
         api.deleteDestination(id, trip)
+    }
+
+    /**
+     * Manually end the current leg (ANDMAP-014, backend LOC-013): mark the active destination
+     * arrived now without advancing. Parent-only, online-only, server-arbitrated like the
+     * destination admin writes; on success it writes through the live destination list and the
+     * map immediately (the same EndLegControl/ANDMAP-013 targets) so the arrived stop and the
+     * server-recomputed active destination + remaining distance appear at once.
+     */
+    fun endLeg() {
+        appScope.launch {
+            try {
+                api.endLeg()
+                destinationError.value = null
+                val now = clock.now()
+                for (target in EndLegControl.refreshTargets()) {
+                    when (target) {
+                        DestinationWriteTarget.STAGED_ITINERARY -> {} // never in the end-leg set
+                        DestinationWriteTarget.LIVE_DESTINATIONS -> runCatching {
+                            destinationsCache.write(api.getDestinations(), now)
+                        }
+                        DestinationWriteTarget.MAP -> runCatching { mapCache.write(api.getMap(), now) }
+                    }
+                }
+                requestSync(SyncTrigger.POST_WRITE)
+            } catch (e: ApiException) {
+                destinationError.value = e.message ?: "Ending the leg was rejected"
+            } catch (e: IOException) {
+                destinationError.value = "Offline — ending a leg needs the server"
+            }
+            bumpTick()
+        }
     }
 
     private fun destinationMutation(trip: String? = null, block: suspend () -> Unit) {

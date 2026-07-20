@@ -314,6 +314,21 @@ class FakeRoadtripApi : RoadtripApi {
         return tripSummary
     }
 
+    /**
+     * Manual end-leg (backend LOC-013 / ANDMAP-014): marks the active destination arrived now
+     * and records its leg, WITHOUT advancing — the next destination stays PENDING (no reconcile).
+     * 409 `conflict` when nothing is active, mirroring the server.
+     */
+    override suspend fun endLeg(): Destination {
+        guard()
+        val active = destinations.firstOrNull { it.status == DestinationStatus.ACTIVE }
+            ?: throw ApiException(409, "conflict", "No active leg to end")
+        val arrived = active.copy(status = DestinationStatus.ARRIVED, arrivedAt = TestData.ts(nextDestNo++ * 1000L))
+        destinations = destinations.map { if (it.id == active.id) arrived else it }
+        legs = legs + Leg(legIndex = legs.size, destinationId = arrived.id, startedAt = TestData.ts(0L), arrivedAt = arrived.arrivedAt)
+        return arrived
+    }
+
     // ---- trips (server-side single-active-trip arbitration, TRIP-001/002) --------------
 
     override suspend fun getTrips(): List<Trip> {

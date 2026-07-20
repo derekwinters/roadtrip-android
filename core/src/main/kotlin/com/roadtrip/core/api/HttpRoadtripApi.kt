@@ -171,6 +171,9 @@ class HttpRoadtripApi(
     override suspend fun getTripSummary(): TripSummary =
         get("api/trip/summary", TripSummary.serializer())
 
+    override suspend fun endLeg(): Destination =
+        request("POST", url("api/trip/leg/end"), emptyBody(), Destination.serializer())
+
     // ---- trips ---------------------------------------------------------------------------
 
     override suspend fun getTrips(): List<Trip> =

@@ -69,6 +69,14 @@ interface RoadtripApi {
     suspend fun getLeg(destinationId: String): Leg
     suspend fun getTripSummary(): TripSummary
 
+    /**
+     * POST /api/trip/leg/end — manually end the current leg (parent-only, online): marks the
+     * active destination `arrived` at the request time and records its leg, WITHOUT advancing
+     * to the next destination (backend LOC-013 / ANDMAP-014). Answers 409 `conflict` when no
+     * destination is active. Returns the arrived destination.
+     */
+    suspend fun endLeg(): Destination
+
     // ---- trips (backend 12-trips.md + planner contract; ANDTRIP) ------------------------
     suspend fun getTrips(): List<Trip>
 
