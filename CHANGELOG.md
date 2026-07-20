@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/derekwinters/roadtrip-android/compare/v1.0.0...v1.1.0) (2026-07-20)
+
+
+### Features
+
+* **games:** add per-profile, per-game-type confirm-move toggle ([#126](https://github.com/derekwinters/roadtrip-android/issues/126)) ([95b2458](https://github.com/derekwinters/roadtrip-android/commit/95b2458b23d94cb63acff7fc211a743c2d110471))
+* **games:** always confirm before resigning or ending a game ([#127](https://github.com/derekwinters/roadtrip-android/issues/127)) ([9fb8f7e](https://github.com/derekwinters/roadtrip-android/commit/9fb8f7e3bcfe89d795bc76ffb6a6cc0488280dee))
+* **games:** highlight the last move on all game boards ([#128](https://github.com/derekwinters/roadtrip-android/issues/128)) ([0ff6b27](https://github.com/derekwinters/roadtrip-android/commit/0ff6b27c5da576b43f6a9d150331ee8c18b8e9ae))
+* **map:** manual End-leg control + keep destinations live during a trip ([#135](https://github.com/derekwinters/roadtrip-android/issues/135)) ([a53ce89](https://github.com/derekwinters/roadtrip-android/commit/a53ce894e290f0fb9a7397063f0cf1174bb03b5c))
+
+
+### Bug Fixes
+
+* **map:** parse geocode response as a bare array ([#85](https://github.com/derekwinters/roadtrip-android/issues/85)) ([4c2271a](https://github.com/derekwinters/roadtrip-android/commit/4c2271a5a44b36692498c692c26ca69676088d67))
+
 ## 1.0.0 (2026-07-19)
 
 
