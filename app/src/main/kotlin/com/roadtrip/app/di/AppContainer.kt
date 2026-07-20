@@ -36,11 +36,14 @@ import com.roadtrip.core.common.Timestamps
 import com.roadtrip.core.games.LobbyRefresher
 import com.roadtrip.core.journal.JournalComposer
 import com.roadtrip.core.notifications.NotificationPipeline
-import com.roadtrip.core.notifications.Screen
 import com.roadtrip.core.notifications.VisibleContext
 import com.roadtrip.core.storage.CacheStore
 import com.roadtrip.core.storage.CursorStore
+import com.roadtrip.core.sync.DestinationWriteRefresh
+import com.roadtrip.core.sync.DestinationWriteTarget
+import com.roadtrip.core.sync.ForegroundReadModel
 import com.roadtrip.core.sync.ForegroundRefreshPolicy
+import com.roadtrip.core.sync.ForegroundRefreshTargets
 import com.roadtrip.core.sync.InboxPuller
 import com.roadtrip.core.sync.JournalCacheApplier
 import com.roadtrip.core.sync.OutboxQueue
@@ -320,23 +323,31 @@ class AppContainer(private val context: Context) {
         }
         withContext(Dispatchers.IO) {
             val now = clock.now()
-            when (screen) {
-                Screen.JOURNAL -> runCatching { mergeJournalPage(api.getJournal(limit = JOURNAL_PAGE)) }
-                Screen.MAP -> runCatching { mapCache.write(api.getMap(), now) }
-                Screen.GAMES -> runCatching { gamesCache.write(api.getGames(), now) }
-                Screen.CHECKLIST -> runCatching { checklistCache.write(api.getChecklist(), now) }
-                Screen.TRIP -> {
-                    runCatching {
-                        val trips = api.getTrips()
-                        tripsCache.write(trips, now)
-                        applyTripState(trips)
-                    }
-                    runCatching { tripSummaryCache.write(api.getTripSummary(), now) }
-                    runCatching { legsCache.write(api.getLegs(), now) }
-                }
-                Screen.GAME_BOARD, Screen.SETTINGS -> Unit
+            // The per-screen read-model set is the pure ForegroundRefreshTargets mapping; MAP
+            // re-pulls the destination list alongside the map so a parent watching the map keeps
+            // mid-trip adds/removes and arrivals landing in the panel current (ANDMAP-012).
+            for (model in ForegroundRefreshTargets.forScreen(screen)) {
+                refreshForegroundReadModel(model, now)
             }
             bumpTick()
+        }
+    }
+
+    /** Re-pulls one read model for the foreground loop; each endpoint fails independently. */
+    private suspend fun refreshForegroundReadModel(model: ForegroundReadModel, now: Instant) {
+        when (model) {
+            ForegroundReadModel.JOURNAL -> runCatching { mergeJournalPage(api.getJournal(limit = JOURNAL_PAGE)) }
+            ForegroundReadModel.MAP -> runCatching { mapCache.write(api.getMap(), now) }
+            ForegroundReadModel.DESTINATIONS -> runCatching { destinationsCache.write(api.getDestinations(), now) }
+            ForegroundReadModel.GAMES -> runCatching { gamesCache.write(api.getGames(), now) }
+            ForegroundReadModel.CHECKLIST -> runCatching { checklistCache.write(api.getChecklist(), now) }
+            ForegroundReadModel.TRIPS -> runCatching {
+                val trips = api.getTrips()
+                tripsCache.write(trips, now)
+                applyTripState(trips)
+            }
+            ForegroundReadModel.TRIP_SUMMARY -> runCatching { tripSummaryCache.write(api.getTripSummary(), now) }
+            ForegroundReadModel.LEGS -> runCatching { legsCache.write(api.getLegs(), now) }
         }
     }
 
@@ -517,10 +528,22 @@ class AppContainer(private val context: Context) {
             try {
                 block()
                 destinationError.value = null
-                // Staged writes refresh the planned trip's cached itinerary right away.
-                if (trip != null) {
-                    runCatching {
-                        stagedDestinationsCache(trip).write(api.getDestinations(trip = trip), clock.now())
+                // Write-through the caches the write touched, right away — mirroring the
+                // immediacy a staged write already had (ANDMAP-013). A live in-trip write also
+                // refreshes the live destination list AND the map so the new/removed/reordered
+                // stop and the server-recomputed active destination + remaining distance appear
+                // at once, not after the next foreground refresh (issue #134). The staged-vs-live
+                // target set is the pure DestinationWriteRefresh decision.
+                val now = clock.now()
+                for (target in DestinationWriteRefresh.targets(staged = trip != null)) {
+                    when (target) {
+                        DestinationWriteTarget.STAGED_ITINERARY -> runCatching {
+                            stagedDestinationsCache(trip!!).write(api.getDestinations(trip = trip), now)
+                        }
+                        DestinationWriteTarget.LIVE_DESTINATIONS -> runCatching {
+                            destinationsCache.write(api.getDestinations(), now)
+                        }
+                        DestinationWriteTarget.MAP -> runCatching { mapCache.write(api.getMap(), now) }
                     }
                 }
                 requestSync(SyncTrigger.POST_WRITE)
