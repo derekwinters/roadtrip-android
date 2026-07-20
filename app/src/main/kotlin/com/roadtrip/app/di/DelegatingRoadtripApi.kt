@@ -85,6 +85,8 @@ class DelegatingRoadtripApi(private val current: () -> RoadtripApi) : RoadtripAp
 
     override suspend fun getTripSummary(): TripSummary = current().getTripSummary()
 
+    override suspend fun endLeg(): Destination = current().endLeg()
+
     override suspend fun getTrips(): List<Trip> = current().getTrips()
 
     override suspend fun createTrip(name: String?): Trip = current().createTrip(name)

@@ -49,12 +49,14 @@ import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.common.Role
 import com.roadtrip.core.map.AddressSearch
 import com.roadtrip.core.map.AddressSearchState
+import com.roadtrip.core.map.EndLegControl
 import com.roadtrip.core.map.MapMarker
 import com.roadtrip.core.map.MapScreenReducer
 import com.roadtrip.core.map.MapScreenState
 import com.roadtrip.core.map.MarkerKind
 import com.roadtrip.core.map.MarkerStyle
 import com.roadtrip.core.map.markerStyleFor
+import com.roadtrip.core.trips.TripAction
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -166,12 +168,17 @@ fun MapScreen(
         }
 
         if (isParent) {
+            val panelDestinations =
+                if (stagingTrip != null) stagedDestinations else state?.destinationList.orEmpty()
             DestinationPanel(
                 container = container,
-                destinations = if (stagingTrip != null) stagedDestinations else state?.destinationList.orEmpty(),
+                destinations = panelDestinations,
                 stagingTrip = stagingTrip,
                 stagingEnabled = stagingEnabled,
                 onAddByCoordinates = { showCoordinateDialog = true },
+                // Manual End-leg safety net, shown only while a destination is active (ANDMAP-014).
+                endLegAction = EndLegControl.action(profile.role, online, panelDestinations),
+                onEndLeg = { container.endLeg() },
             )
         }
     }
@@ -323,7 +330,10 @@ private fun DestinationPanel(
     stagingTrip: Trip?,
     stagingEnabled: Boolean,
     onAddByCoordinates: () -> Unit,
+    endLegAction: TripAction,
+    onEndLeg: () -> Unit,
 ) {
+    var showEndLegDialog by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -331,6 +341,13 @@ private fun DestinationPanel(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
+            // Manual End-leg safety net (ANDMAP-014): parent-only, online-only, dialog-confirmed,
+            // shown only while a destination is active — the pure EndLegControl decides visibility.
+            if (endLegAction.visible) {
+                TextButton(onClick = { showEndLegDialog = true }, enabled = endLegAction.enabled) {
+                    Text("End leg")
+                }
+            }
             TextButton(onClick = onAddByCoordinates, enabled = stagingEnabled) {
                 Icon(Icons.Filled.Add, contentDescription = null)
                 Text("Address / coordinates")
@@ -352,6 +369,28 @@ private fun DestinationPanel(
                 DestinationRow(container, destination, destinations, stagingTrip?.id, stagingEnabled)
             }
         }
+    }
+
+    if (showEndLegDialog) {
+        AlertDialog(
+            onDismissRequest = { showEndLegDialog = false },
+            title = { Text("End this leg?") },
+            text = {
+                Text(
+                    "Mark the current destination as arrived now. This won't advance to the next stop — " +
+                        "add the next pin when you're ready.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showEndLegDialog = false
+                    onEndLeg()
+                }) { Text("End leg") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEndLegDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 

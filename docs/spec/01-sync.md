@@ -22,6 +22,8 @@ Implements the client side of backend spec `09-sync-notifications.md`.
   re-check) is a pure policy (`ForegroundRefreshPolicy`) over `{visible, online,
   lastRefreshAt, now}`; the loop reuses the existing sync/read-model machinery and prefers a
   cheap re-pull of just the `visibleContext` screen, falling back to a full foreground pass.
+  Which read models a given screen re-pulls is the pure `ForegroundRefreshTargets` mapping
+  (the map screen re-pulls the destination list alongside the map state — ANDMAP-012).
 
 ## Requirements
 

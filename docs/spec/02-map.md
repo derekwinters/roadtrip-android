@@ -11,6 +11,11 @@ on-device tile cache so the last-viewed region works offline).
   see the full future destination list.
 - **Parents** additionally see the full ordered destination list and can add/edit/reorder/
   remove destinations from the map screen.
+- **Parents** can also manually **end the current leg** from the destination panel — a safety
+  net (backend LOC-013) for when automatic arrival detection misses. It marks the active
+  destination arrived now and does not advance to the next stop; the next leg begins when the
+  next pin is added. Parent-only, online-only, dialog-confirmed, and shown only while a
+  destination is active (ANDMAP-014).
 
 ## Requirements
 
@@ -27,6 +32,9 @@ on-device tile cache so the last-viewed region works offline).
 | ANDMAP-009 | When the device is genuinely offline — a transport failure (`IOException`) or the backend's `geocode_unavailable` (upstream geocoder unreachable, backend GSR-004) — the address path shows a needs-internet state; pin and coordinate entry stay available in this and every other failure state. | auto |
 | ANDMAP-010 | Each marker renders with distinct, kind-based iconography, all center-anchored on the point: current position is a car; trip start is a red flat dot; destinations are green flat dots (the active/next destination emphasized) — never osmdroid's default teardrop pin. The kind→style mapping is derived purely from `MarkerKind` (`markerStyleFor`), independent of which markers a role sees (ANDMAP-001). | auto |
 | ANDMAP-011 | Address search distinguishes an online geocoder failure from being offline: when the backend reaches the geocoder but it errors (`geocode_upstream_error`, backend GSR-006) or returns another server error while online, the flow shows a distinct temporarily-unavailable state (not a needs-internet message); any other unexpected failure surfaces as an explicit, logged error state rather than silently degrading. Coordinate/pin entry remain available (ANDMAP-009). | auto |
+| ANDMAP-012 | While the map screen is foregrounded, the in-app live refresh (ANDSYNC-008) re-pulls the destination list alongside `GET /api/map`, so a parent viewing the map keeps mid-trip destination adds/removes/reorders and arrivals landing in the panel current without leaving the screen — otherwise local pings keep moving the "current" dot while the frozen active-destination marker and remaining distance go stale (issue #134). The per-screen read-model set is the pure `ForegroundRefreshTargets` mapping in core. | auto |
+| ANDMAP-013 | A live (in-trip) parent destination write immediately re-pulls the live destination list AND the map state — the server having recomputed the active destination and remaining distance — mirroring how a staged write refreshes the planned trip's staged itinerary (ANDTRIP-007); the change appears at once rather than after the next foreground refresh (issue #134). The staged-vs-live target set is the pure `DestinationWriteRefresh` decision in core. All server-side geodesy stays on the backend (ANDMAP-002); the client only re-pulls and renders. | auto |
+| ANDMAP-014 | The destination panel offers a manual **End leg** safety net (`POST /api/trip/leg/end`, backend LOC-013) for when automatic arrival never fires: it marks the active destination arrived now without advancing to the next stop. Like End trip it is parent-only, online-only, and always dialog-confirmed (ANDTRIP-001/004); it is shown only while a destination is `active` — hidden between trips, while staging a planned trip, and for kids. On success it writes through the live destination list and the map immediately (the same `DestinationWriteRefresh` targets as a live destination write, ANDMAP-013). The availability + refresh decision is the pure `EndLegControl` in core. | auto |
 
 ## Marker iconography
 
