@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/derekwinters/roadtrip-android/compare/v1.1.0...v1.2.0) (2026-07-21)
+
+
+### Features
+
+* **ai:** adopt shared ai-skills bundles (dev agent, skills, self-updater, pr-title-lint) ([#142](https://github.com/derekwinters/roadtrip-android/issues/142)) ([0a7ca2e](https://github.com/derekwinters/roadtrip-android/commit/0a7ca2e9437960da808b75f6525153e568c0de70))
+
 ## [1.1.0](https://github.com/derekwinters/roadtrip-android/compare/v1.0.0...v1.1.0) (2026-07-20)
 
 
