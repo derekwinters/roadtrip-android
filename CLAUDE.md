@@ -6,8 +6,8 @@ Material 3 adaptive layouts, Room offline queue, WorkManager sync, osmdroid map.
 
 ## Development methodology (mandatory)
 
-Spec-driven + test-driven, via the `roadtrip-dev` agent workflow in
-`.claude/agents/roadtrip-dev.md`:
+Spec-driven + test-driven, via the shared `dev` agent workflow in
+`.claude/agents/dev.md`:
 
 1. **Spec first** — update `docs/spec/*.md`. Client behavior references backend requirement IDs
    where relevant; Android-specific requirements use the `AND-*` areas.
