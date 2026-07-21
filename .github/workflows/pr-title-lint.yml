@@ -1,0 +1,37 @@
+# pr-title-lint — enforce Conventional Commit PR titles.
+#
+# PRs merge via squash, so the PR title becomes the commit release-please
+# parses. This gate rejects titles that are not valid Conventional Commits.
+name: pr-title-lint
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            revert
+          # Subject must not start with an upper-case letter.
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" must start with a lower-case letter.
