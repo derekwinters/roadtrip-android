@@ -318,7 +318,10 @@ class AppContainer(private val context: Context) {
      */
     private suspend fun foregroundRefresh() {
         val screen = if (activityVisible.value) visibleContext.value?.screen else null
-        if (screen == null) {
+        // No screen context, or a screen whose read model is fed by locally-queued offline writes
+        // (bingo): run the full serialized sync pass so queued marks flush and remote state pulls,
+        // rather than a pull-only re-pull that would let a parked device drift (ANDSYNC-009).
+        if (screen == null || ForegroundRefreshTargets.requiresFullSync(screen)) {
             requestSync(SyncTrigger.FOREGROUND)
             return
         }

@@ -17,7 +17,7 @@ data class LocalNotification(
     val count: Int = 1,
 )
 
-enum class Screen { JOURNAL, MAP, GAMES, GAME_BOARD, CHECKLIST, TRIP, SETTINGS }
+enum class Screen { JOURNAL, MAP, GAMES, BINGO, GAME_BOARD, CHECKLIST, TRIP, SETTINGS }
 
 data class VisibleContext(val screen: Screen, val gameId: String? = null)
 

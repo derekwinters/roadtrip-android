@@ -131,8 +131,10 @@ fun AppShell(
                 backStackEntry?.arguments?.getString("gameId"),
             )
             currentRoute.startsWith("replay/") -> VisibleContext(Screen.GAMES)
-            // Bingo lives in the Games section (docs/spec/10-bingo.md).
-            currentRoute.startsWith("bingo") -> VisibleContext(Screen.GAMES)
+            // Bingo lives in the Games section (docs/spec/10-bingo.md) but reports its own screen:
+            // its card is fed by offline plate.* writes, so it foreground-refreshes via a full
+            // sync pass rather than the lobby's pull-only re-pull (ANDSYNC-009 / ANDBNG-006).
+            currentRoute.startsWith("bingo") -> VisibleContext(Screen.BINGO)
             currentRoute.startsWith("checklist") -> VisibleContext(Screen.CHECKLIST)
             // "trips" must be tested before the "trip" prefix it shares.
             currentRoute.startsWith("trips") -> VisibleContext(Screen.TRIP)

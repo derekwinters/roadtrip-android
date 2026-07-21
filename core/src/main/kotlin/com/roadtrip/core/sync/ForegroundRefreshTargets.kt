@@ -32,7 +32,18 @@ object ForegroundRefreshTargets {
         Screen.CHECKLIST -> setOf(ForegroundReadModel.CHECKLIST)
         Screen.TRIP -> setOf(ForegroundReadModel.TRIPS, ForegroundReadModel.TRIP_SUMMARY, ForegroundReadModel.LEGS)
         // The game board self-updates via its long-poll (ANDGAME-005) and settings has no live
-        // feed, so both only bump the refresh tick — no read model to re-pull.
-        Screen.GAME_BOARD, Screen.SETTINGS -> emptySet()
+        // feed, so both only bump the refresh tick — no read model to re-pull. Bingo needs a full
+        // sync pass (requiresFullSync below), not a cheap read-model target.
+        Screen.BINGO, Screen.GAME_BOARD, Screen.SETTINGS -> emptySet()
     }
+
+    /**
+     * Screens whose live correctness needs a **full serialized sync pass** (flush the outbox +
+     * pull), not a pull-only re-pull (ANDSYNC-009). The bingo card is fed by locally-queued
+     * offline `plate.*` writes, so a device parked on it must push its own queued marks and pull
+     * other devices' marks on the foreground cadence — a read-model re-pull would do neither
+     * (ANDBNG-006). Every other screen's read model is server-owned (journal is flushed at post
+     * time) or server-arbitrated (game moves), so they keep the cheap re-pull.
+     */
+    fun requiresFullSync(screen: Screen): Boolean = screen == Screen.BINGO
 }
