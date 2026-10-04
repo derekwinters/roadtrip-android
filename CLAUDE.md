@@ -6,8 +6,8 @@ Material 3 adaptive layouts, Room offline queue, WorkManager sync, osmdroid map.
 
 ## Development methodology (mandatory)
 
-Spec-driven + test-driven, via the shared `dev` agent workflow in
-`.claude/agents/dev.md`:
+Spec-driven + test-driven, per the shared ai-sdlc house rules (imported at the end of this file;
+configuration in `.ai-sdlc/repo-config.yml`):
 
 1. **Spec first** — update `docs/spec/*.md`. Client behavior references backend requirement IDs
    where relevant; Android-specific requirements use the `AND-*` areas.
@@ -31,3 +31,5 @@ Spec-driven + test-driven, via the shared `dev` agent workflow in
 - Location tracking is enabled **only by parent profiles** (any device class); pings are
   attributed to the enabling parent, and the tracker never runs between trips.
 - Requirement areas: AND (app-wide), ANDSYNC, ANDLOC, ANDMAP, ANDJRNL, ANDGAME, ANDNOTIF, ANDSET, ANDTRIP (planned).
+
+@.ai-sdlc/house-rules.md
