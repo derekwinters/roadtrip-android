@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ANDREL-007: the debug build installs side-by-side with the release app, so its
+         launcher label says which one it is. -->
+    <string name="app_name">Road Trip (debug)</string>
+</resources>

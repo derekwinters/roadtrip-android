@@ -4,6 +4,8 @@ name: Release
 #  - release-please maintains version.txt + CHANGELOG from conventional commits
 #  - while a release PR is open, each main build publishes an RC prerelease with APKs
 #  - the versioned release gets final APKs attached to its notes (no store publishing)
+#  - release APKs are signed with the stable release key and verified against the pinned
+#    certificate before publishing (ANDREL-005); the keystore never reaches pr.yml (ANDREL-006)
 #
 # RC tag invariant (ANDREL-004): RC prereleases are published under opaque git tags
 # (`rc-<run_number>`) that release-please cannot parse as release versions — the
@@ -80,12 +82,56 @@ jobs:
             echo "version=v${NEXT}-rc.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
             echo "tag=rc-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           fi
+      # Stable release signing (ANDREL-005, #185). A missing keystore must FAIL the job, not
+      # skip: a debug-signed release installs fine and only breaks the *next* upgrade, which
+      # forces an uninstall that wipes the Room DB and its unsynced outbox.
+      - name: Check release keystore secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+        run: |
+          missing=""
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEYSTORE_SHA256 ANDROID_KEY_ALIAS ANDROID_KEY_ALIAS_PASSWORD; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Release keystore missing::Missing secret(s):$missing. Refusing to build a release APK that would fall back to debug signing and break in-place upgrades (ANDREL-005)."
+            exit 1
+          fi
+      - name: Decode release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "${{ runner.temp }}/roadtrip-release.keystore"
       - name: Build APKs
+        env:
+          # Gradle refuses to fall back to debug signing when this is set (ANDREL-005/006).
+          ROADTRIP_REQUIRE_RELEASE_SIGNING: 'true'
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/roadtrip-release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
         run: ./gradlew :app:assembleDebug :app:assembleRelease
       - name: Rename artifacts
         run: |
           cp app/build/outputs/apk/release/app-release.apk roadtrip-${{ steps.version.outputs.version }}.apk
           cp app/build/outputs/apk/debug/app-debug.apk roadtrip-${{ steps.version.outputs.version }}-debug.apk
+      # The gate's own decision logic is unit-tested before it is trusted.
+      - name: Unit-test the release signature gate
+        run: python3 -m unittest discover -s .github/scripts/tests
+      # Nothing is published until the release APK is proven to carry the pinned release
+      # certificate (ANDREL-005). The `-debug` APK is debug-signed by design and installs
+      # side-by-side under the `.debug` applicationId (ANDREL-007), so it is not gated.
+      - name: Verify the release signature
+        env:
+          ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
+        run: |
+          python3 .github/scripts/verify_release_signature.py \
+            roadtrip-${{ steps.version.outputs.version }}.apk
       - name: Publish release candidate (prerelease)
         if: steps.version.outputs.kind == 'rc'
         # Workflow re-runs reuse the run number, so delete any previous attempt first —
@@ -116,3 +162,6 @@ jobs:
                 echo "Pruning RC prerelease + tag: $tag"
                 gh release delete "$tag" --cleanup-tag --yes
               done
+      - name: Delete decoded release keystore
+        if: always()
+        run: rm -f "${{ runner.temp }}/roadtrip-release.keystore"

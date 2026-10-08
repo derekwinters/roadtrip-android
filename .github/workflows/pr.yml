@@ -18,6 +18,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       - name: Spec / documentation validation
         run: ./scripts/validate-specs.sh
+      - name: Release pipeline gate tests (ANDREL-005/006)
+        run: python3 -m unittest discover -s .github/scripts/tests
       - name: Unit tests (core JVM + app Robolectric)
         run: |
           ./gradlew -p core test

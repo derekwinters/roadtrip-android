@@ -24,8 +24,10 @@ if [[ ${#seen[@]} -eq 0 ]]; then
   echo "✗ No requirement tables found under docs/spec/"; fail=1
 fi
 
-# Test corpus: all test sources in both modules
-corpus=$(find core/src/test app/src/test -name '*.kt' -exec cat {} + 2>/dev/null || true)
+# Test corpus: all test sources in both modules, plus the stdlib Python tests that cover
+# the release pipeline (.github/scripts/tests, ANDREL-005/006).
+corpus=$( { find core/src/test app/src/test -name '*.kt' -exec cat {} +; \
+  find .github/scripts/tests -name 'test_*.py' -exec cat {} +; } 2>/dev/null || true)
 auto_count=0
 for id in "${!seen[@]}"; do
   [[ "${verify[$id]}" == "auto" ]] || continue

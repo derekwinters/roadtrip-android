@@ -8,3 +8,8 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Release signing material never enters git (ANDREL-005/006)
+keystore.properties
+*.jks
+*.keystore
