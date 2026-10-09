@@ -1,0 +1,35 @@
+# roadtrip-android's ai-sdlc configuration (see docs/spec/configuration.md in
+# derekwinters/ai-sdlc for the schema).
+#
+# hygiene     — closing-keyword gate + shared house rules (PRs are how change lands).
+# consistency — this repo is spec-driven: requirement tables in docs/spec/ are
+#               checked against the tests by ./scripts/validate-specs.sh.
+# release     — versioning is release-please (release.yml, version.txt).
+#
+# `pipeline` is deliberately off: it needs the label taxonomy (`labels`), an
+# `owners` list and a `dashboard_issue`, and this repository has no issue
+# lifecycle or dashboard issue. Enabling it without them is a configuration
+# error, refused at load.
+capabilities:
+  - hygiene
+  - consistency
+  - release
+
+commands:
+  test: ./gradlew -p core test && ./gradlew :app:testDebugUnitTest
+  verify: ./scripts/validate-specs.sh
+
+# Which ai-sdlc skills this repository installs. `skills-update` opens a
+# pull request when one of them changes upstream, and a name removed here
+# is uninstalled on the next run.
+#
+# Seeded once by `adopt` from the capabilities above, and never touched
+# again: this list is yours. Add to it, prune it, or set it to `[]` to
+# install none — whatever is here is what a later adoption will honour.
+skills:
+  - github-api
+  - routines
+  - release-flow
+  # Replaces the ci-watch copy the predecessor (derekwinters/ai-skills)
+  # installed; that unmanaged copy is removed so this one can be installed.
+  - ci-watch
