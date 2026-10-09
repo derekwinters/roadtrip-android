@@ -1,5 +1,9 @@
 # Grouped weekly dependency updates with a 14-day cooldown, so updates arrive as a
 # few consolidated PRs instead of a stream of singletons.
+#
+# For gradle, the group only covers minor and patch updates. Major updates arrive
+# as their own individual PRs, so one breaking major upgrade can't block every
+# harmless update that would otherwise share its grouped PR.
 version: 2
 updates:
   - package-ecosystem: gradle
@@ -12,6 +16,9 @@ updates:
       gradle-dependencies:
         patterns:
           - '*'
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
