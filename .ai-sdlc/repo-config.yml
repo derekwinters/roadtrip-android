@@ -1,0 +1,56 @@
+# roadtrip-android's ai-sdlc configuration (see docs/spec/configuration.md in
+# derekwinters/ai-sdlc for the schema). Tracking issue: #182.
+#
+# hygiene     — closing-keyword gate + shared house rules (PRs are how change lands).
+# consistency — this repo is spec-driven: requirement tables in docs/spec/ are
+#               checked against the tests by ./scripts/validate-specs.sh.
+# labels      — the pipeline's label taxonomy, synced from .github/labels.core.yml.
+# release     — versioning is release-please (release.yml, version.txt).
+# pipeline    — the issue lifecycle: triage → human approval → build.
+capabilities:
+  - hygiene
+  - consistency
+  - labels
+  - release
+  - pipeline
+
+owners:
+  - derekwinters
+
+milestone_ordering: semver
+
+# The existing "Pipeline dashboard" issue; the dashboard workflow rewrites its body.
+dashboard_issue: 184
+
+commands:
+  test: ./gradlew -p core test && ./gradlew :app:testDebugUnitTest
+  verify: ./scripts/validate-specs.sh
+
+# Names of the repository secrets holding the triage routine's API trigger URL
+# and token — never the values themselves.
+fire:
+  endpoint_secret: ROUTINE_FIRE_URL
+  token_secret: ROUTINE_FIRE_TOKEN
+
+# Which ai-sdlc skills this repository installs; `skills-update` opens a pull
+# request when one of them changes upstream. This list is ours: `adopt` only
+# seeds it when the key is absent, so it is written here by hand to match
+# what adopt seeds for these capabilities (substrate, release, pipeline).
+# `routines` is needed for the routines below; `ci-watch` replaces the copy the
+# predecessor (derekwinters/ai-skills) installed.
+skills:
+  - github-api
+  - routines
+  - release-flow
+  - triage-issue
+  - pipeline-dev
+  - issue-blockers
+  - ci-watch
+  - milestone-ops
+
+# The Claude Code routines this repository wants, by definition id. Created and
+# updated by an agent in a cloud session via the `routines` skill; `triage`
+# also needs an API trigger whose URL and token go in the secrets `fire:` names.
+routines:
+  - triage
+  - dependabot

@@ -31,3 +31,5 @@ Spec-driven + test-driven, via the shared `dev` agent workflow in
 - Location tracking is enabled **only by parent profiles** (any device class); pings are
   attributed to the enabling parent, and the tracker never runs between trips.
 - Requirement areas: AND (app-wide), ANDSYNC, ANDLOC, ANDMAP, ANDJRNL, ANDGAME, ANDNOTIF, ANDSET, ANDTRIP (planned).
+
+@.ai-sdlc/house-rules.md
