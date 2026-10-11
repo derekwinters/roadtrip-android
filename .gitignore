@@ -8,3 +8,11 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Release signing material never enters git (ANDREL-005/006)
+keystore.properties
+*.jks
+*.keystore
+
+# Python bytecode from the release-gate tests
+__pycache__/

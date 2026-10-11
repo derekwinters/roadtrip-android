@@ -30,7 +30,7 @@ car-hotspot VPN and stays fully usable offline.
 ```bash
 ./gradlew -p core test            # pure-JVM business logic (no Android SDK needed)
 ./gradlew :app:testDebugUnitTest  # Robolectric tests
-./gradlew :app:assembleRelease    # APK (debug-signed; distribution is GitHub releases only)
+./gradlew :app:assembleRelease    # release APK (debug-signed fallback without signing inputs)
 ./scripts/validate-specs.sh       # spec/documentation validation
 ```
 
@@ -44,3 +44,24 @@ enforced by CI.
 Conventional commits + release-please (`version.txt` drives `versionName`/`versionCode`):
 PR builds upload APK artifacts, `main` builds publish RC prereleases while a release PR is
 open, and versioned releases get final APKs attached to the release notes. No app stores.
+
+### Release signing (upgrade in place)
+
+Release and RC APKs are signed with one stable release key, so each release installs over the
+previous one without uninstalling (which would wipe the local database and any unsynced
+outbox). The keystore lives only in repository Actions secrets (`ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEYSTORE_SHA256`, `ANDROID_KEY_ALIAS`,
+`ANDROID_KEY_ALIAS_PASSWORD`); the release workflow fails if any is missing and verifies every
+release APK against the pinned certificate before publishing. PR builds never see the key and
+stay debug-signed. The `-debug` APK uses the `com.roadtrip.app.debug` application ID, so it
+installs alongside the real app.
+
+- **One-time transition:** the first stable-signed release differs from the old debug-signed
+  installs, so each device needs one final uninstall/reinstall — sync first (empty outbox).
+  Every upgrade after that is in place.
+- **No recovery:** if the keystore or its passwords are lost, no future version can install
+  over the current one. Keep an offline backup outside GitHub.
+- **Local release signing (optional):** create a git-ignored `keystore.properties` at the repo
+  root with `storeFile`, `storePassword`, `keyAlias`, `keyPassword`.
+
+Details: [docs/spec/08-testing.md](docs/spec/08-testing.md#release-signing-and-in-place-upgrades).

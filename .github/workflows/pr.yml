@@ -18,6 +18,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       - name: Spec / documentation validation
         run: ./scripts/validate-specs.sh
+      - name: Release pipeline gate tests (ANDREL-005/006)
+        run: python3 -m unittest discover -s .github/scripts/tests
       - name: Unit tests (core JVM + app Robolectric)
         run: |
           ./gradlew -p core test
@@ -38,6 +40,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       - name: Build APKs
         run: ./gradlew :app:assembleDebug :app:assembleRelease
+      # ANDREL-008 — the release gate's parser meets the runner's real apksigner on every PR,
+      # so a build-tools format change fails here instead of during a release. The PR APK is
+      # debug-signed by design: parse-only mode checks the format, not the certificate, and
+      # needs no secrets (ANDREL-006).
+      - name: Parse the runner's apksigner output with the release gate (ANDREL-008)
+        run: python3 .github/scripts/verify_release_signature.py --parse-only app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v7
         with:
           name: roadtrip-android-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.sha }}
