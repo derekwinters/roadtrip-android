@@ -20,6 +20,42 @@ require(Regex("""^\d+\.\d+\.\d+$""").matches(versionText)) {
 }
 val (vMajor, vMinor, vPatch) = versionText.split(".").map { it.toInt() }
 
+// Stable release signing (ANDREL-005/006, docs/spec/08-testing.md "Release signing and
+// in-place upgrades"). Inputs come from env vars (CI release workflow) or a git-ignored
+// keystore.properties at the repo root (local). Without them, assembleRelease falls back to
+// debug signing so PR CI and local builds keep working — unless
+// ROADTRIP_REQUIRE_RELEASE_SIGNING=true (set by release.yml), which fails the build instead
+// of silently producing an APK that can never upgrade in place.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun signingInput(env: String, property: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() }
+        ?: keystoreProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+
+val releaseSigningInputs = linkedMapOf(
+    "ANDROID_KEYSTORE_PATH" to signingInput("ANDROID_KEYSTORE_PATH", "storeFile"),
+    "ANDROID_KEYSTORE_PASSWORD" to signingInput("ANDROID_KEYSTORE_PASSWORD", "storePassword"),
+    "ANDROID_KEY_ALIAS" to signingInput("ANDROID_KEY_ALIAS", "keyAlias"),
+    "ANDROID_KEY_ALIAS_PASSWORD" to signingInput("ANDROID_KEY_ALIAS_PASSWORD", "keyPassword"),
+)
+val missingSigningInputs = releaseSigningInputs.filterValues { it == null }.keys
+val hasReleaseSigning = missingSigningInputs.isEmpty()
+val requireReleaseSigning = System.getenv("ROADTRIP_REQUIRE_RELEASE_SIGNING") == "true"
+if (requireReleaseSigning && !hasReleaseSigning) {
+    throw GradleException(
+        "ROADTRIP_REQUIRE_RELEASE_SIGNING=true but release signing inputs are missing: " +
+            "$missingSigningInputs — refusing to fall back to debug signing (ANDREL-005)"
+    )
+}
+if (!hasReleaseSigning) {
+    logger.warn(
+        "Release signing inputs missing ($missingSigningInputs): assembleRelease will be " +
+            "debug-signed and cannot upgrade a stable-signed install (ANDREL-006)."
+    )
+}
+
 android {
     namespace = "com.roadtrip.app"
     compileSdk = 35
@@ -33,12 +69,29 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigningInputs.getValue("ANDROID_KEYSTORE_PATH")!!)
+                storePassword = releaseSigningInputs.getValue("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = releaseSigningInputs.getValue("ANDROID_KEY_ALIAS")
+                keyPassword = releaseSigningInputs.getValue("ANDROID_KEY_ALIAS_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // ANDREL-007: the randomly-signed debug APK installs side-by-side with the
+            // stable-signed release app instead of colliding with it.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
-            // Debug-signed release builds: releases attach to GitHub release notes only,
-            // never a store (docs/spec/08-testing.md release engineering).
-            signingConfig = signingConfigs.getByName("debug")
+            // Stable release key when signing inputs are present (ANDREL-005); otherwise a
+            // debug-signed fallback for PR CI and local builds (ANDREL-006).
+            signingConfig = signingConfigs.getByName(if (hasReleaseSigning) "release" else "debug")
         }
     }
 
