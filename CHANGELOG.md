@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/derekwinters/roadtrip-android/compare/v1.1.0...v1.2.0) (2026-10-11)
+
+
+### Features
+
+* **ai:** adopt shared ai-skills bundles (dev agent, skills, self-updater, pr-title-lint) ([#142](https://github.com/derekwinters/roadtrip-android/issues/142)) ([0a7ca2e](https://github.com/derekwinters/roadtrip-android/commit/0a7ca2e9437960da808b75f6525153e568c0de70))
+* match launcher icon colors to chores app ([#192](https://github.com/derekwinters/roadtrip-android/issues/192)) ([9fa5484](https://github.com/derekwinters/roadtrip-android/commit/9fa54845db439b2cb0ef192d3e45a6c4896ee49e)), closes [#191](https://github.com/derekwinters/roadtrip-android/issues/191)
+
+
+### Bug Fixes
+
+* **release:** sign releases with a stable key so APKs upgrade in place ([#187](https://github.com/derekwinters/roadtrip-android/issues/187)) ([61a2dcc](https://github.com/derekwinters/roadtrip-android/commit/61a2dcca45a90578e910afcc61a3280db8a77ae8)), closes [#185](https://github.com/derekwinters/roadtrip-android/issues/185) [#144](https://github.com/derekwinters/roadtrip-android/issues/144)
+
 ## [1.1.0](https://github.com/derekwinters/roadtrip-android/compare/v1.0.0...v1.1.0) (2026-07-20)
 
 
