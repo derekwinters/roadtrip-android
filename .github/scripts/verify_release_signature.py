@@ -49,11 +49,16 @@ EXPECTED_FINGERPRINT_ENV = "ANDROID_KEYSTORE_SHA256"
 
 _SHA256_HEX_DIGITS = 64
 
-# apksigner prints "Signer #1 certificate DN: ..." and, when signers differ per
-# SDK range, "Signer (minSdkVersion=24, maxSdkVersion=32) #1 certificate DN:".
-# Both shapes carry the signer index, which is what identifies the block.
+# apksigner labels each signer's certificate lines, and the label has changed
+# across build-tools releases:
+#   31.0.2:               "Signer #1 certificate DN: ..."
+#   per-SDK-range (v3.1): "Signer (minSdkVersion=24, maxSdkVersion=32) #1 certificate DN: ..."
+#   ubuntu-latest runner: "V2 Signer: certificate DN: ..."  (scheme-labelled, no #N — #193)
+# Each fixture under tests/fixtures/ pins one of these. The label (everything
+# before "certificate") identifies a block; the block's certificate identifies
+# the signer.
 _SIGNER_LINE = re.compile(
-    r"^Signer\s*(?:\([^)]*\)\s*)?#(\d+)\s+certificate\s+(DN|SHA-256 digest):\s*(.*)$")
+    r"^((?:V\d+(?:\.\d+)?\s+)?Signer\b[^:]*?):?\s+certificate\s+(DN|SHA-256 digest):\s*(.*)$")
 _SIGNER_COUNT_LINE = re.compile(r"^Number of signers:\s*(\d+)\s*$")
 
 _FINGERPRINT_LABEL = re.compile(r"^\s*SHA-?256\s*:", re.IGNORECASE)
@@ -110,7 +115,7 @@ def parse_apksigner_certs(text):
     a silently *short* list could let an unexamined signer through.
     """
     declared = None
-    by_index = {}
+    blocks = {}  # label -> {"dn", "sha256"}, in first-seen order
 
     for line in text.splitlines():
         count_match = _SIGNER_COUNT_LINE.match(line.strip())
@@ -122,34 +127,48 @@ def parse_apksigner_certs(text):
         if not signer_match:
             continue
 
-        index = int(signer_match.group(1))
+        label = signer_match.group(1).strip()
         field = signer_match.group(2)
         value = signer_match.group(3).strip()
-        signer = by_index.setdefault(index, {"dn": "", "sha256": ""})
+        block = blocks.setdefault(label, {"dn": "", "sha256": ""})
 
         if field == "DN":
-            signer["dn"] = value
+            block["dn"] = value
         else:
             digest = normalize_fingerprint(value)
-            if signer["sha256"] and signer["sha256"] != digest:
+            if block["sha256"] and block["sha256"] != digest:
                 raise MalformedApksignerOutput(
-                    "signer #{0} is reported with two different certificates, "
-                    "{1} and {2}".format(index, signer["sha256"], digest))
-            signer["sha256"] = digest
+                    "'{0}' is reported with two different certificates, "
+                    "{1} and {2}".format(label, block["sha256"], digest))
+            block["sha256"] = digest
 
     if declared is None:
         raise MalformedApksignerOutput(
             "apksigner output has no 'Number of signers:' line — the format this "
             "gate reads has changed, so its verdict cannot be trusted")
 
-    if declared != len(by_index):
+    # One signer per distinct certificate. Newer apksigner labels blocks by
+    # scheme, so an APK signed under several schemes lists its single key once
+    # per scheme; a second key under any label is a second signer and breaks
+    # the declared count below.
+    by_cert = {}
+    for label, block in blocks.items():
+        if not block["sha256"]:
+            raise MalformedApksignerOutput(
+                "'{0}' has no certificate SHA-256 digest — the format this gate "
+                "reads has changed".format(label))
+        known = by_cert.setdefault(block["sha256"], block)
+        if not known["dn"]:
+            known["dn"] = block["dn"]
+
+    if declared != len(by_cert):
         raise MalformedApksignerOutput(
             "apksigner reported {0} signer(s) but {1} could be parsed — the format "
-            "this gate reads has changed".format(declared, len(by_index)))
+            "this gate reads has changed".format(declared, len(by_cert)))
 
     return [
-        SignerFacts(index=index, dn=by_index[index]["dn"], sha256=by_index[index]["sha256"])
-        for index in sorted(by_index)
+        SignerFacts(index=index, dn=block["dn"], sha256=sha256)
+        for index, (sha256, block) in enumerate(by_cert.items(), start=1)
     ]
 
 

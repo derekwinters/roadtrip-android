@@ -31,6 +31,13 @@ verbatim stdout of apksigner 31.0.2 run over a real signed APK, with and without
 certified a gate that could not read a single real APK — its #752). The
 throwaway key in that capture is deliberately NOT this repo's release key; the
 fixtures pin apksigner's output *shape*.
+
+`apksigner-ubuntu-latest-runner-verify-print-certs-verbose.txt` is the verbatim
+output of the apksigner on GitHub's `ubuntu-latest` runner (the newest
+build-tools there, Oct 2026 — it reports v3.1/v3.2 schemes), captured by PR
+CI's parse-only step over the debug-signed `app-release.apk` (#193). It labels
+signers by scheme (`V2 Signer: certificate DN: ...`) with no `#N` index — the
+31.0.2-era regex matched none of it, so v1.2.0 shipped no APKs (ANDREL-008).
 """
 
 import contextlib
@@ -69,6 +76,11 @@ def _read(*parts):
 
 CAPTURED_VERBOSE_OUTPUT = _read(FIXTURES, "apksigner-verify-print-certs-verbose.txt")
 CAPTURED_NON_VERBOSE_OUTPUT = _read(FIXTURES, "apksigner-verify-print-certs-nonverbose.txt")
+
+CI_RUNNER_VERBOSE_OUTPUT = _read(
+    FIXTURES, "apksigner-ubuntu-latest-runner-verify-print-certs-verbose.txt")
+CI_RUNNER_SHA256 = "4e80bba3b04e49f3ae094716c0f8e06a15d554ee2cdb7f837ea8b5c1f63d9719"
+CI_RUNNER_DN = "C=US, O=Android, CN=Android Debug"
 
 CAPTURED_SHA256 = "10d315258da7c4c4830814ae6f876e84145f2195cfb077bc0bb04e3df0a61ed8"
 CAPTURED_KEYTOOL_FORM = (
@@ -197,6 +209,53 @@ class ParseApksignerCertsTests(unittest.TestCase):
         signers = parse_apksigner_certs(CAPTURED_VERBOSE_OUTPUT)
         self.assertEqual(len(signers), 1)
         self.assertEqual(signers[0].sha256, CAPTURED_SHA256)
+
+
+class CiRunnerApksignerFormatTests(unittest.TestCase):
+    """[ANDREL-008] the format the CI runner's apksigner really prints."""
+
+    def test_reads_the_single_scheme_labelled_signer_from_the_runner_capture(self):
+        signers = parse_apksigner_certs(CI_RUNNER_VERBOSE_OUTPUT)
+        self.assertEqual(signers, [SignerFacts(index=1, dn=CI_RUNNER_DN, sha256=CI_RUNNER_SHA256)])
+
+    def test_the_runner_capture_of_a_debug_signed_apk_is_named_a_debug_fallback(self):
+        verdict = assess(parse_apksigner_certs(CI_RUNNER_VERBOSE_OUTPUT), CAPTURED_SHA256)
+        self.assertFalse(verdict.ok)
+        self.assertTrue(any("debug signing" in r.lower() for r in verdict.reasons),
+                        verdict.reasons)
+
+    def test_the_runner_capture_passes_when_its_certificate_is_the_pinned_one(self):
+        verdict = assess(parse_apksigner_certs(CI_RUNNER_VERBOSE_OUTPUT), CI_RUNNER_SHA256)
+        self.assertTrue(verdict.ok, verdict.reasons)
+
+    def test_the_signer_count_check_stays_strict_for_the_runner_format(self):
+        overcounted = CI_RUNNER_VERBOSE_OUTPUT.replace(
+            "Number of signers: 1", "Number of signers: 2")
+        with self.assertRaises(MalformedApksignerOutput):
+            parse_apksigner_certs(overcounted)
+
+    def test_a_scheme_signer_without_a_certificate_digest_is_malformed(self):
+        no_digest = "\n".join(
+            line for line in CI_RUNNER_VERBOSE_OUTPUT.splitlines()
+            if "certificate SHA-256 digest" not in line)
+        with self.assertRaises(MalformedApksignerOutput):
+            parse_apksigner_certs(no_digest)
+
+    def test_the_same_certificate_under_two_scheme_labels_is_one_signer(self):
+        """Hand-authored: a v2+v3-signed APK lists its one key once per scheme."""
+        both = CI_RUNNER_VERBOSE_OUTPUT + (
+            "V3 Signer: certificate DN: {0}\n"
+            "V3 Signer: certificate SHA-256 digest: {1}\n").format(CI_RUNNER_DN, CI_RUNNER_SHA256)
+        signers = parse_apksigner_certs(both)
+        self.assertEqual([s.sha256 for s in signers], [CI_RUNNER_SHA256])
+
+    def test_a_second_certificate_under_another_scheme_label_is_not_hidden(self):
+        """Hand-authored: an extra key in another scheme breaks the declared count."""
+        extra = CI_RUNNER_VERBOSE_OUTPUT + (
+            "V3 Signer: certificate DN: CN=Somebody Else\n"
+            "V3 Signer: certificate SHA-256 digest: {0}\n").format(OTHER_SHA256)
+        with self.assertRaises(MalformedApksignerOutput):
+            parse_apksigner_certs(extra)
 
 
 class ApksignerInvocationTests(unittest.TestCase):

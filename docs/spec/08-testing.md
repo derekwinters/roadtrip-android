@@ -71,6 +71,9 @@ runs only on `push` to `main`):
    parsed). Parse-only mode needs no secrets and checks no fingerprint. **Invariant:** the
    signer-count cross-check is never loosened to accept a new format — the parser learns the
    format from a verbatim capture of the runner's output, kept as a fixture beside the old ones.
+   The runner's apksigner labels signers by scheme (`V2 Signer: certificate DN: …`, no `#N`), so
+   the parser counts one signer per distinct certificate across the labelled blocks: one key
+   listed under several schemes is one signer, and any second key is a second signer.
    Whenever the gate cannot parse apksigner's output (PR or release), it prints that raw output
    (public certificate data only) so the drift is diagnosable from the job log.
 
