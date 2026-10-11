@@ -22,7 +22,8 @@ fingerprint from the environment instead of a committed file.
 
 The decisions are pure functions so they unit-test without an Android SDK:
 `normalize_fingerprint`, `parse_apksigner_certs`, `assess` and
-`expected_fingerprint_from_env`. `main` wires them to apksigner.
+`expected_fingerprint_from_env`. `main` wires them to apksigner; `--parse-only`
+(PR CI, ANDREL-008) checks only that the runner's apksigner output parses.
 """
 
 import argparse
@@ -243,6 +244,58 @@ def print_certs(apk, apksigner=None):
     return result.stdout
 
 
+def _print_raw_output(name, raw):
+    """apksigner's own output, verbatim, in a collapsible log group (ANDREL-008).
+
+    It is public certificate data (DNs and digests), so it is safe in a job
+    log — and it is the only way to see a format drift from the log alone.
+    """
+    print("::group::{0}: raw `apksigner verify --print-certs --verbose` output".format(name))
+    print(raw.rstrip("\n"))
+    print("::endgroup::")
+
+
+def parse_only(apks):
+    """Check that the gate can read the runner's real apksigner output (ANDREL-008).
+
+    PR CI runs this on the debug-signed `app-release.apk` it builds. No pinned
+    fingerprint and no secrets: it only proves the parser still understands
+    the apksigner that CI actually has, so a format change fails a PR instead
+    of a release.
+    """
+    failed = False
+    for apk in apks:
+        name = os.path.basename(apk)
+        try:
+            raw = print_certs(apk)
+        except (MalformedApksignerOutput, OSError) as exc:
+            print("::error title=apksigner format::{0}: {1}".format(name, exc))
+            failed = True
+            continue
+
+        _print_raw_output(name, raw)
+        try:
+            signers = parse_apksigner_certs(raw)
+        except (MalformedApksignerOutput, MalformedFingerprint) as exc:
+            print("::error title=apksigner format::{0}: {1}".format(name, exc))
+            failed = True
+            continue
+
+        for signer in signers:
+            print("{0}: parsed signer #{1} {2}\n  DN: {3}".format(
+                name, signer.index, signer.sha256, signer.dn))
+        print("OK: the release gate parsed {0} signer(s) from {1}.".format(len(signers), name))
+
+    if failed:
+        print(
+            "\nThe release-signature gate cannot read this runner's apksigner output, so "
+            "it would fail every release. Capture the raw output above as a fixture under "
+            ".github/scripts/tests/fixtures/ and teach the parser the format "
+            "(docs/spec/08-testing.md, ANDREL-008).")
+        return 1
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("apk", nargs="+", help="release APK(s) to check")
@@ -250,7 +303,14 @@ def main(argv=None):
         "--expected", default=None,
         help="the pinned fingerprint itself, overriding the {0} env var".format(
             EXPECTED_FINGERPRINT_ENV))
+    parser.add_argument(
+        "--parse-only", action="store_true",
+        help="only check that apksigner's output parses (PR CI, ANDREL-008); "
+             "needs no pinned fingerprint and judges no certificate")
     args = parser.parse_args(argv)
+
+    if args.parse_only:
+        return parse_only(args.apk)
 
     try:
         expected = (
@@ -264,8 +324,16 @@ def main(argv=None):
     for apk in args.apk:
         name = os.path.basename(apk)
         try:
-            signers = parse_apksigner_certs(print_certs(apk))
-        except (MalformedApksignerOutput, MalformedFingerprint, OSError) as exc:
+            raw = print_certs(apk)
+        except (MalformedApksignerOutput, OSError) as exc:
+            print("::error title=Release signature::{0}: {1}".format(name, exc))
+            failed = True
+            continue
+
+        try:
+            signers = parse_apksigner_certs(raw)
+        except (MalformedApksignerOutput, MalformedFingerprint) as exc:
+            _print_raw_output(name, raw)
             print("::error title=Release signature::{0}: {1}".format(name, exc))
             failed = True
             continue

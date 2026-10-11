@@ -4,6 +4,8 @@ covers: ANDREL-005 (a published release APK is signed by the pinned release
 certificate and no other key; the release job fails closed before any upload)
 covers: ANDREL-006 (PR builds never reach the release key; Gradle falls back to
 debug signing only when release signing is not required)
+covers: ANDREL-008 (PR CI runs the parser against the runner's real apksigner
+output; parse failures print the raw output)
 
 Every roadtrip-android release up to #185 was signed with a fresh random debug
 key generated on the CI runner, so no release could be installed over the
@@ -31,6 +33,8 @@ throwaway key in that capture is deliberately NOT this repo's release key; the
 fixtures pin apksigner's output *shape*.
 """
 
+import contextlib
+import io
 import os
 import re
 import subprocess
@@ -47,6 +51,7 @@ from verify_release_signature import (  # noqa: E402
     SignerFacts,
     assess,
     expected_fingerprint_from_env,
+    main,
     normalize_fingerprint,
     parse_apksigner_certs,
     print_certs,
@@ -262,6 +267,58 @@ class AssessTests(unittest.TestCase):
         self.assertTrue(verdict.ok, verdict.reasons)
 
 
+class GateEntryPointTests(unittest.TestCase):
+    """[ANDREL-008] parse-only mode, and raw output on every parse failure."""
+
+    def _main(self, argv, apksigner_output, environ=None):
+        out = io.StringIO()
+        with mock.patch("verify_release_signature.print_certs",
+                        return_value=apksigner_output), \
+                mock.patch.dict(os.environ, environ or {}, clear=True), \
+                contextlib.redirect_stdout(out):
+            code = main(argv)
+        return code, out.getvalue()
+
+    def test_parse_only_passes_a_readable_capture_without_any_pinned_fingerprint(self):
+        code, out = self._main(["--parse-only", "app-release.apk"], CAPTURED_VERBOSE_OUTPUT)
+        self.assertEqual(code, 0, out)
+        self.assertIn(CAPTURED_SHA256, out)
+
+    def test_parse_only_prints_the_raw_apksigner_output(self):
+        code, out = self._main(["--parse-only", "app-release.apk"], CAPTURED_VERBOSE_OUTPUT)
+        self.assertIn("Signer #1 public key MD5 digest:", out,
+                      "parse-only must log apksigner's raw output so its format is visible")
+
+    def test_parse_only_does_not_judge_the_certificate(self):
+        """The PR APK is debug-signed by design; parse-only checks the format, not the key."""
+        code, out = self._main(["--parse-only", "app-release.apk"], DEBUG_OUTPUT)
+        self.assertEqual(code, 0, out)
+
+    def test_parse_only_fails_when_the_signer_count_disagrees(self):
+        unreadable = "Verifies\nNumber of signers: 1\nSigner one: something new\n"
+        code, out = self._main(["--parse-only", "app-release.apk"], unreadable)
+        self.assertEqual(code, 1, out)
+        self.assertIn("Signer one: something new", out)
+
+    def test_a_release_check_parse_failure_prints_the_raw_output(self):
+        unreadable = "Verifies\nNumber of signers: 1\nSigner one: something new\n"
+        code, out = self._main(["app-release.apk"], unreadable,
+                               environ={"ANDROID_KEYSTORE_SHA256": CAPTURED_SHA256})
+        self.assertEqual(code, 1, out)
+        self.assertIn("Signer one: something new", out,
+                      "a parse failure must log the raw apksigner output for diagnosis")
+
+    def test_the_release_check_still_requires_the_pinned_fingerprint(self):
+        code, out = self._main(["app-release.apk"], CAPTURED_VERBOSE_OUTPUT)
+        self.assertEqual(code, 1, out)
+        self.assertIn("ANDROID_KEYSTORE_SHA256", out)
+
+    def test_the_release_check_passes_the_pinned_certificate(self):
+        code, out = self._main(["app-release.apk"], CAPTURED_VERBOSE_OUTPUT,
+                               environ={"ANDROID_KEYSTORE_SHA256": CAPTURED_KEYTOOL_FORM})
+        self.assertEqual(code, 0, out)
+
+
 def _step_body(text, step_name):
     """The YAML lines of one named step, up to the next step at its indent."""
     lines = text.splitlines()
@@ -358,6 +415,19 @@ class PullRequestBuildTests(unittest.TestCase):
     def test_pr_workflow_runs_the_release_gate_tests(self):
         text = _read(REPO_ROOT, ".github", "workflows", "pr.yml")
         self.assertIn("unittest discover -s .github/scripts/tests", text)
+
+    def test_pr_workflow_parses_the_runners_real_apksigner_output(self):
+        """[ANDREL-008] the parser meets the CI apksigner on every PR, not first at release."""
+        text = _read(REPO_ROOT, ".github", "workflows", "pr.yml")
+        step = "Parse the runner's apksigner output with the release gate (ANDREL-008)"
+        body = _step_body(text, step)
+        self.assertIsNotNone(body, "pr.yml has no '{0}' step".format(step))
+        self.assertIn("verify_release_signature.py --parse-only", body)
+        self.assertIn("app/build/outputs/apk/release/app-release.apk", body)
+        self.assertNotIn("continue-on-error", body)
+        self.assertLess(text.index("run: ./gradlew :app:assembleDebug :app:assembleRelease"),
+                        text.index("- name: " + step),
+                        "the gate parses the APK after PR CI builds it")
 
 
 class GradleSigningConfigTests(unittest.TestCase):

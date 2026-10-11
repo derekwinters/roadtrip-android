@@ -13,3 +13,6 @@ captures/
 keystore.properties
 *.jks
 *.keystore
+
+# Python bytecode from the release-gate tests
+__pycache__/

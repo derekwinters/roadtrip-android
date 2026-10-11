@@ -62,6 +62,17 @@ runs only on `push` to `main`):
    debug-key fallback is named explicitly in the error. The parser is tested against output
    captured from a real `apksigner` run with those exact flags — a gate that parses another
    tool's output is only as trustworthy as the realness of its fixtures.
+4. **The parser meets the runner's real apksigner on every PR.** Fixtures go stale when the
+   runner's build-tools move on (v1.2.0 shipped no APKs because the CI apksigner's signer lines
+   no longer matched the 31.0.2 captures, #193). So PR CI runs the gate in `--parse-only` mode
+   against the debug-signed `app-release.apk` it already builds: it prints the raw
+   `apksigner verify --print-certs --verbose` output to the log and fails when the parser cannot
+   read it (no `Number of signers:` header, or a declared count that differs from the signers
+   parsed). Parse-only mode needs no secrets and checks no fingerprint. **Invariant:** the
+   signer-count cross-check is never loosened to accept a new format — the parser learns the
+   format from a verbatim capture of the runner's output, kept as a fixture beside the old ones.
+   Whenever the gate cannot parse apksigner's output (PR or release), it prints that raw output
+   (public certificate data only) so the drift is diagnosable from the job log.
 
 Without signing inputs (and without `ROADTRIP_REQUIRE_RELEASE_SIGNING`), `assembleRelease`
 falls back to debug signing with a warning, so PR CI (ANDREL-002) and local builds keep
@@ -85,3 +96,4 @@ ever install over the current one again, so keep an offline backup outside GitHu
 | ANDREL-005 | Every APK published to an RC prerelease or final release is signed by the release certificate pinned in the `ANDROID_KEYSTORE_SHA256` secret and by no other key: the release job fails before any upload when a keystore secret is missing or the APK's signer fingerprint (normalized for case/colons) differs, naming a debug-key fallback explicitly; the decoded keystore is deleted afterwards. | auto |
 | ANDREL-006 | PR builds never reach the release key: `pr.yml` references none of the keystore secrets, and `assembleRelease` without signing inputs falls back to debug signing unless `ROADTRIP_REQUIRE_RELEASE_SIGNING=true`, in which case the build fails. | auto |
 | ANDREL-007 | The debug build installs side-by-side with release builds: debug `applicationId` is `com.roadtrip.app.debug` (suffix `.debug`). | auto |
+| ANDREL-008 | PR CI runs the release-signature gate's parser (`--parse-only`: no secrets, no pinned fingerprint) against the runner's real `apksigner verify --print-certs --verbose` output for the debug-signed `app-release.apk`, printing that raw output and failing when the declared signer count differs from the signers parsed; the parser reads every captured apksigner format under `.github/scripts/tests/fixtures/`, and on any parse failure the gate prints the raw apksigner output. | auto |
