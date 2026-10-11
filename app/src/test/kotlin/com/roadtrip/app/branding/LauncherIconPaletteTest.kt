@@ -8,7 +8,7 @@ import org.w3c.dom.Element
 
 /**
  * covers: AND-016 — the launcher icon uses the palette shared with chores-web-android:
- * white adaptive background, primary-blue map pin, white center-dot knockout.
+ * white adaptive background, primary-blue map pin, grey center dot.
  * Reads the source resources directly (Gradle runs unit tests from the module directory).
  */
 class LauncherIconPaletteTest {
@@ -29,12 +29,12 @@ class LauncherIconPaletteTest {
     }
 
     @Test
-    fun mapPinIsPrimaryBlueWithWhiteCenterDot() {
+    fun mapPinIsPrimaryBlueWithGreyCenterDot() {
         val paths = parse("src/main/res/drawable/ic_launcher_foreground.xml").getElementsByTagName("path")
         val fills = (0 until paths.length).map {
             (paths.item(it) as Element).getAttributeNS(androidNs, "fillColor").uppercase()
         }
         // Path order is the glyph's paint order: the pin body, then the center dot on top.
-        assertEquals(listOf("#1361A7", "#FFFFFF"), fills)
+        assertEquals(listOf("#1361A7", "#818589"), fills)
     }
 }
