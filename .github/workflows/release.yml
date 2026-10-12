@@ -71,16 +71,27 @@ jobs:
         # `version` is the human-readable name used in release titles and APK filenames;
         # `tag` is the git tag. For finals they coincide (SemVer, release-please's own
         # tag); for RCs the tag is the opaque `rc-<run_number>` (ANDREL-004).
+        # release-please's outputs carry PR/commit text (the PR JSON holds the release-notes
+        # body), so they reach the script only via env: and are read as quoted variables —
+        # never `${{ }}`-inlined, where one apostrophe breaks bash and `$(...)` runs (ANDREL-009).
+        env:
+          RP_RELEASE_CREATED: ${{ needs.release-please.outputs.release_created }}
+          RP_TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          RP_PR: ${{ needs.release-please.outputs.pr }}
         run: |
-          if [ "${{ needs.release-please.outputs.release_created }}" = "true" ]; then
+          if [ "$RP_RELEASE_CREATED" = "true" ]; then
             echo "kind=final" >> "$GITHUB_OUTPUT"
-            echo "version=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
-            echo "tag=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "version=$RP_TAG_NAME" >> "$GITHUB_OUTPUT"
+            echo "tag=$RP_TAG_NAME" >> "$GITHUB_OUTPUT"
           else
-            NEXT=$(echo '${{ needs.release-please.outputs.pr }}' | jq -r '.title' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            NEXT=$(printf '%s' "$RP_PR" | jq -r '.title' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+            if [ -z "$NEXT" ]; then
+              echo "::error title=No release version::The release-please PR title has no MAJOR.MINOR.PATCH version; refusing to publish an unversioned RC."
+              exit 1
+            fi
             echo "kind=rc" >> "$GITHUB_OUTPUT"
-            echo "version=v${NEXT}-rc.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-            echo "tag=rc-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "version=v${NEXT}-rc.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "tag=rc-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           fi
       # Stable release signing (ANDREL-005, #185). A missing keystore must FAIL the job, not
       # skip: a debug-signed release installs fine and only breaks the *next* upgrade, which

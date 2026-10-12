@@ -84,6 +84,8 @@ working; `pr.yml` never references the keystore secrets. The debug build type ca
 (debug)"), so the randomly-signed debug APK attached to releases installs side-by-side with
 the real app and can never collide with it.
 
+**Workflow scripts never inline untrusted text** (ANDREL-009). Actions substitutes `${{ }}` into a `run:` script before bash parses it, so a release-please PR whose body quotes a commit title with an apostrophe broke "Determine version" (and `$(...)` there would have run beside the signing secrets, #193). **Invariant:** release-please outputs and PR/issue/comment/commit text are passed through a step's `env:` and read as quoted shell variables; only values the workflow controls (`github.run_number`, `github.sha`, its own computed step outputs) may be inlined. `.github/scripts/tests/test_release_workflow_injection.py` scans every workflow for violations and runs the version step under Actions' own bash flags against a hostile PR body.
+
 **One-time transition.** The first stable-signed build is itself a signature change from the
 earlier debug-signed installs, so each device needs one last uninstall/reinstall — make sure it
 has fully synced (outbox empty) first. Every upgrade after that is in place. **The keystore has
@@ -100,3 +102,4 @@ ever install over the current one again, so keep an offline backup outside GitHu
 | ANDREL-006 | PR builds never reach the release key: `pr.yml` references none of the keystore secrets, and `assembleRelease` without signing inputs falls back to debug signing unless `ROADTRIP_REQUIRE_RELEASE_SIGNING=true`, in which case the build fails. | auto |
 | ANDREL-007 | The debug build installs side-by-side with release builds: debug `applicationId` is `com.roadtrip.app.debug` (suffix `.debug`). | auto |
 | ANDREL-008 | PR CI runs the release-signature gate's parser (`--parse-only`: no secrets, no pinned fingerprint) against the runner's real `apksigner verify --print-certs --verbose` output for the debug-signed `app-release.apk`, printing that raw output and failing when the declared signer count differs from the signers parsed; the parser reads every captured apksigner format under `.github/scripts/tests/fixtures/`, and on any parse failure the gate prints the raw apksigner output. | auto |
+| ANDREL-009 | No workflow `run:` script interpolates PR/commit-controlled text with `${{ }}`: release-please's outputs (`pr`, `tag_name`, `release_created`) and any `github.event` PR/issue/comment/commit text reach the shell only through the step's `env:` and are read as quoted variables, so quotes or `$(...)` in a release PR body neither break nor execute in the release job; an RC whose release-PR title carries no `MAJOR.MINOR.PATCH` fails instead of publishing an unversioned build. | auto |
