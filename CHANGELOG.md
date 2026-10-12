@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/derekwinters/roadtrip-android/compare/v1.2.0...v1.3.0) (2026-10-12)
+
+
+### Features
+
+* add a thin white ring between the launcher pin and its center dot ([#200](https://github.com/derekwinters/roadtrip-android/issues/200)) ([1279bbc](https://github.com/derekwinters/roadtrip-android/commit/1279bbc435c46c7f9cd04d7eb5ba0f112b179d71)), closes [#199](https://github.com/derekwinters/roadtrip-android/issues/199)
+
+
+### Bug Fixes
+
+* **release:** pass release-please outputs to the version step via env ([#198](https://github.com/derekwinters/roadtrip-android/issues/198)) ([15c5acb](https://github.com/derekwinters/roadtrip-android/commit/15c5acb03c0501d45312d752289a20c44562b370)), closes [#193](https://github.com/derekwinters/roadtrip-android/issues/193)
+* **release:** publish debug-signed APKs until release signing is fixed ([#195](https://github.com/derekwinters/roadtrip-android/issues/195)) ([5d9d274](https://github.com/derekwinters/roadtrip-android/commit/5d9d2740b2c4ef21797eeb4e2d919e35b637fb33)), closes [#194](https://github.com/derekwinters/roadtrip-android/issues/194) [#193](https://github.com/derekwinters/roadtrip-android/issues/193)
+* **release:** restore stable release signing with a gate that reads CI's apksigner ([#197](https://github.com/derekwinters/roadtrip-android/issues/197)) ([ee5b2f9](https://github.com/derekwinters/roadtrip-android/commit/ee5b2f96f6177d70947356644c1bbe5af38ce62f))
+
 ## [1.2.0](https://github.com/derekwinters/roadtrip-android/compare/v1.1.0...v1.2.0) (2026-10-11)
 
 
