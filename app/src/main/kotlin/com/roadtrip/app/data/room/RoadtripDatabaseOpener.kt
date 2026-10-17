@@ -22,7 +22,7 @@ import java.io.File
  *   `outbox` before the salvage table is dropped (ANDSYNC-010).
  *
  * Invariant: no code path drops or recreates `outbox` on a version change, and
- * `fallbackToDestructiveMigration()` is never used.
+ * Room's destructive-migration fallback is never used.
  */
 object RoadtripDatabaseOpener {
 

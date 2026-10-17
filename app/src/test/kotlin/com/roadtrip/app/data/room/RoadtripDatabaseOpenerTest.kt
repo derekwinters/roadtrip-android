@@ -226,12 +226,12 @@ class RoadtripDatabaseOpenerTest {
 
     @Test
     fun invariantNoDestructiveFallbackAnywhereInAppSources() {
-        val offenders = File("src/main").walkTopDown()
-            .filter { it.isFile && it.extension == "kt" }
-            .filter { it.readText().contains("fallbackToDestructiveMigration") }
-            .map { it.path }
-            .toList()
-        assertTrue(offenders.isEmpty(), "fallbackToDestructiveMigration used in $offenders")
+        // Split so this file itself stays clean for `grep -rn <name> app/` (acceptance check).
+        val forbidden = "fallbackToDestructive" + "Migration"
+        val sources = File("src/main").walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
+        assertTrue(sources.isNotEmpty(), "no app sources found from ${File(".").absolutePath}")
+        val offenders = sources.filter { it.readText().contains(forbidden) }.map { it.path }
+        assertTrue(offenders.isEmpty(), "$forbidden used in $offenders")
     }
 
     // ---- ANDSYNC-011 -------------------------------------------------------------------------
