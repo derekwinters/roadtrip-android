@@ -24,6 +24,15 @@ Implements the client side of backend spec `09-sync-notifications.md`.
   cheap re-pull of just the `visibleContext` screen, falling back to a full foreground pass.
   Which read models a given screen re-pulls is the pure `ForegroundRefreshTargets` mapping
   (the map screen re-pulls the destination list alongside the map state — ANDMAP-012).
+- **Local schema changes**: the outbox holds events that exist nowhere else, so it must
+  survive every Room schema change; `cursors` and `cache` are rebuildable from the server.
+  Each version bump ships a registered `Migration` and a migration test against the previous
+  version's exported schema (`app/schemas/`). When Room has no migration path from the
+  on-device version — an older one (including pre-release v1) or a newer one (a downgrade) —
+  the opener (`RoadtripDatabaseOpener`) clears `cursors` and `cache` so they are rebuilt from
+  the server, and carries every `outbox` row over into the current schema.
+  - **Invariant:** no code path may drop or recreate `outbox` on a version change;
+    `fallbackToDestructiveMigration()` is not used.
 
 ## Requirements
 
@@ -37,3 +46,6 @@ Implements the client side of backend spec `09-sync-notifications.md`.
 | ANDSYNC-006 | The journal cache renders correctly interleaved entries after syncing events that were created offline on other devices (mixed-device ordering by client_ts). | auto |
 | ANDSYNC-007 | Sync runs on: foreground entry, connectivity regained, a periodic background schedule (15 min default), and after each local write; passes are serialized (no concurrent flushes). | auto |
 | ANDSYNC-008 | While the app is foregrounded (`activityVisible`) and online, an in-app loop refreshes the visible screen's read model on a short cadence (default 30 s, tunable) so new server data appears in place via `refreshTick` without navigating away or reopening. The refresh/re-check decision is a pure policy (`ForegroundRefreshPolicy`) over `{visible, online, lastRefreshAt, now}`: it refreshes when online and at least the interval has elapsed, waits the remaining time otherwise, backs off (no network pass) while offline, and idles while backgrounded so the loop never spins or drains battery. | auto |
+| ANDSYNC-009 | A schema upgrade preserves all `outbox` rows, pending and quarantined, including each quarantined row's reason. | auto |
+| ANDSYNC-010 | When Room has no migration path from the on-device schema version (older, including pre-release v1, or newer, i.e. a downgrade), `cursors` and `cache` are cleared so they are rebuilt from the server, and every `outbox` row is retained. | auto |
+| ANDSYNC-011 | The Room schema is exported (`exportSchema = true`) and the JSON for the current version is committed under `app/schemas/`, so each future version bump gets a migration test against the previous schema. | auto |
