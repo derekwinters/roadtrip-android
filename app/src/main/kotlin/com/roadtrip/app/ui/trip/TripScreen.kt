@@ -27,11 +27,11 @@ import com.roadtrip.app.ui.common.SectionHeader
 import com.roadtrip.core.settings.LegRow
 import com.roadtrip.core.settings.TripReducer
 import com.roadtrip.core.settings.TripScreenState
-import java.util.Locale
+import com.roadtrip.core.trips.TripFormat
 
 /**
- * Trip screen (ANDSET-004): whole-trip summary (miles, hours wall/moving, states, stops,
- * games) plus per-leg summaries. A leg-arrival deep link highlights that leg
+ * Trip screen (ANDSET-004): whole-trip summary (miles, h:mm total/moving per ANDTRIP-010, states,
+ * stops, games) plus per-leg summaries. A leg-arrival deep link highlights that leg
  * (ANDJRNL-004). Past trips are reachable through the history browser (ANDTRIP-003).
  */
 @Composable
@@ -84,8 +84,8 @@ fun TripScreen(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            "${fmt(state.summary.miles)} mi · ${fmt(state.summary.wallHours)} h total · " +
-                                "${fmt(state.summary.movingHours)} h moving",
+                            "${TripFormat.miles(state.summary.miles)} · " +
+                                TripFormat.durationLine(state.summary.wallMinutes, state.summary.movingMinutes),
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
@@ -135,9 +135,8 @@ private fun LegCard(leg: LegRow, highlighted: Boolean) {
                 )
             }
             val details = buildList {
-                leg.miles?.let { add("${fmt(it)} mi") }
-                leg.wallHours?.let { add("${fmt(it)} h") }
-                leg.movingHours?.let { add("${fmt(it)} h moving") }
+                leg.miles?.let { add(TripFormat.miles(it)) }
+                addAll(TripFormat.legDurations(leg.wallMinutes, leg.movingMinutes))
                 leg.stopCount?.let { add("$it stops") }
                 leg.gamesPlayed?.let { add("$it games") }
             }
@@ -150,5 +149,3 @@ private fun LegCard(leg: LegRow, highlighted: Boolean) {
         }
     }
 }
-
-private fun fmt(value: Double): String = String.format(Locale.US, "%.1f", value)
