@@ -36,6 +36,7 @@ import com.roadtrip.app.location.SystemBatteryOptimizationExempter
 import com.roadtrip.app.location.TrackerService
 import com.roadtrip.app.ui.common.Avatar
 import com.roadtrip.app.ui.common.SectionHeader
+import com.roadtrip.app.ui.common.SingleChoiceChips
 import com.roadtrip.app.ui.trips.ActivatePlannedTripDialog
 import com.roadtrip.app.ui.trips.EndTripDialog
 import com.roadtrip.app.ui.trips.StartTripDialog
@@ -47,6 +48,7 @@ import com.roadtrip.core.location.TrackerEnabler
 import com.roadtrip.core.location.TrackerGate
 import com.roadtrip.core.location.TrackerGateResult
 import com.roadtrip.core.profiles.FeatureVisibilityRules
+import com.roadtrip.core.settings.ThemeChoices
 import com.roadtrip.core.trips.TripPhase
 import com.roadtrip.core.trips.TripStateReducer
 import kotlinx.coroutines.CompletableDeferred
@@ -58,7 +60,8 @@ import kotlinx.coroutines.launch
  * permission flow, ANDLOC-003/005, and records the enabling parent, ANDLOC-008), the road
  * trip start/end actions (ANDTRIP-001/004), detection tuning via the core ConfigForm
  * (ANDSET-001/002), and profile administration (ANDSET-005). Kids see only the server
- * address and app version.
+ * address, app version, and the theme selector. The theme selector (ANDSET-007) is shown to every
+ * profile: it is one per-device preference, not a per-profile one.
  */
 @Composable
 fun SettingsScreen(
@@ -105,6 +108,18 @@ fun SettingsScreen(
             color = if (online) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         )
         Text("App version: ${appVersion(context)}", style = MaterialTheme.typography.labelMedium)
+
+        // ---- theme: one per-device preference, parents and kids (ANDSET-007) --------------
+        if (visibility.themeSetting) {
+            SectionHeader("Theme")
+            val themeMode by container.settings.themeMode.collectAsState()
+            SingleChoiceChips(
+                options = ThemeChoices.all,
+                selected = ThemeChoices.all.first { it.mode == themeMode },
+                onSelect = { container.settings.setThemeMode(it.mode) },
+                label = { it.label },
+            )
+        }
 
         // ---- road trip lifecycle: parent-only, online-only, confirmed (ANDTRIP-001/004) ----
         if (profile.role == Role.PARENT) {

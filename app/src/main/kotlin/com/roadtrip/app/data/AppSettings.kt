@@ -14,6 +14,8 @@ import com.roadtrip.core.common.UuidIdGenerator
 import com.roadtrip.core.games.ConfirmMovePreference
 import com.roadtrip.core.settings.ServerAddress
 import com.roadtrip.core.settings.ServerAddressResult
+import com.roadtrip.core.settings.ThemeMode
+import com.roadtrip.core.settings.ThemePreference
 import com.roadtrip.core.storage.ConfirmMoveStore
 import com.roadtrip.core.storage.SelectedProfileStore
 import com.roadtrip.core.storage.TrackerConfigStore
@@ -30,7 +32,7 @@ private val Context.roadtripDataStore by preferencesDataStore(name = "roadtrip_s
 /**
  * DataStore-backed device settings: server base URL, the selected profile (AND-002:
  * persists across restarts), the tracker config (which parent enabled it, ANDLOC-003/008),
- * and a stable device id for sync batches.
+ * the device-wide theme preference (ANDSET-007), and a stable device id for sync batches.
  *
  * Values are loaded once at startup (tiny file) and mirrored in StateFlows so the
  * synchronous core ports ([SelectedProfileStore], [TrackerConfigStore]) and Compose UI
@@ -47,6 +49,7 @@ class AppSettings(
         val TRACKER_ENABLED = booleanPreferencesKey("tracker_enabled")
         val TRACKER_ENABLED_BY = stringPreferencesKey("tracker_enabled_by")
         val DEVICE_ID = stringPreferencesKey("device_id")
+        val THEME_MODE = stringPreferencesKey(ThemePreference.KEY)
     }
 
     private val initial: Preferences = runBlocking { context.roadtripDataStore.data.first() }
@@ -74,6 +77,17 @@ class AppSettings(
     /** Profile id of the parent who enabled the tracker on this device (ANDLOC-003/008). */
     private val _trackerEnabledBy = MutableStateFlow(initial[Keys.TRACKER_ENABLED_BY])
     val trackerEnabledBy: StateFlow<String?> = _trackerEnabledBy.asStateFlow()
+
+    // One theme preference per device, not per profile (ANDSET-007): decoded through the pure
+    // core codec, so a missing or garbled value reads as System.
+    private val _themeMode = MutableStateFlow(ThemePreference.decode(initial[Keys.THEME_MODE]))
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    /** Sets the device theme; the root theme observes [themeMode], so it applies at once. */
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        persist { it[Keys.THEME_MODE] = ThemePreference.encode(mode) }
+    }
 
     // Per-(profileId, gameType) "confirm move" toggle (ANDGAME-022). Keys are dynamic
     // (`confirm_move:<profileId>:<gameType>`) so they can't be fixed StateFlows; seed a synchronous

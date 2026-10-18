@@ -40,8 +40,11 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
 
         setContent {
-            // AND-018: the app theme (colour scheme + board palette), not a bare MaterialTheme.
-            RoadTripTheme {
+            // AND-018/AND-019: the app theme (colour scheme + board palette), not a bare
+            // MaterialTheme, resolved from the device theme preference (ANDSET-007) — a change
+            // recomposes from here and re-themes every screen immediately.
+            val themeMode by container.settings.themeMode.collectAsState()
+            RoadTripTheme(themeMode = themeMode) {
                 Surface {
                     val serverUrl by container.settings.serverUrl.collectAsState()
                     val profile by container.settings.selectedProfile.collectAsState()

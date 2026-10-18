@@ -213,6 +213,8 @@ data class FeatureVisibility(
     val games: Boolean,
     val checklist: Boolean,
     val trip: Boolean,
+    /** The per-device theme selector (ANDSET-007) — every role. */
+    val themeSetting: Boolean,
 )
 
 object FeatureVisibilityRules {
@@ -228,6 +230,7 @@ object FeatureVisibilityRules {
             games = true,
             checklist = true,
             trip = true,
+            themeSetting = true, // per-device display preference, parents and kids (ANDSET-007)
         )
     }
 }
