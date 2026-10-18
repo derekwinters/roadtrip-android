@@ -43,8 +43,8 @@ class TripScreenStateTest {
         assertEquals("Denver", done.destinationName)
         assertTrue(done.arrived)
         assertEquals(512.5, done.miles)
-        assertEquals(8.5, done.wallHours) // 510 min
-        assertEquals(7.5, done.movingHours)
+        assertEquals(510.0, done.wallMinutes)
+        assertEquals(450.0, done.movingMinutes)
         assertEquals(3, done.stopCount)
         assertEquals(listOf("IL", "IA", "NE", "CO"), done.states)
         assertEquals(4, done.gamesPlayed)
@@ -54,8 +54,8 @@ class TripScreenStateTest {
         assertNull(current.miles) // still under way, no summary yet
 
         assertEquals(812.0, screen.summary.miles)
-        assertEquals(15.0, screen.summary.wallHours)
-        assertEquals(12.0, screen.summary.movingHours)
+        assertEquals(900.0, screen.summary.wallMinutes)
+        assertEquals(720.0, screen.summary.movingMinutes)
         assertEquals(5, screen.summary.statesCount)
         assertEquals(6, screen.summary.stopCount)
         assertEquals(9, screen.summary.gamesPlayed)

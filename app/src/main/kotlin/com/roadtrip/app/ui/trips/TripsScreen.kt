@@ -33,10 +33,10 @@ import com.roadtrip.core.api.TripStatus
 import com.roadtrip.core.api.TripSummary
 import com.roadtrip.core.common.Timestamps
 import com.roadtrip.core.trips.PlannerState
+import com.roadtrip.core.trips.TripFormat
 import com.roadtrip.core.trips.TripHistoryBrowser
 import com.roadtrip.core.trips.TripPlannerReducer
 import com.roadtrip.core.trips.lifecycleInstant
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -281,8 +281,8 @@ private fun TripDetailView(
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    "${fmt(summary.miles)} mi · ${fmt(summary.wallMinutes / 60.0)} h total · " +
-                                        "${fmt(summary.movingMinutes / 60.0)} h moving",
+                                    "${TripFormat.miles(summary.miles)} · " +
+                                        TripFormat.durationLine(summary.wallMinutes, summary.movingMinutes),
                                     style = MaterialTheme.typography.titleMedium,
                                 )
                                 Text(
@@ -341,5 +341,3 @@ private fun tripDates(trip: Trip): String {
     val end = trip.endedAt?.let { formatFeedTime(Timestamps.parse(it)) }
     return if (end != null) "$start — $end" else "since $start"
 }
-
-private fun fmt(value: Double): String = String.format(Locale.US, "%.1f", value)
