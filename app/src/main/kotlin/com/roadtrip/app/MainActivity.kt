@@ -8,7 +8,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,6 +18,7 @@ import com.roadtrip.app.notifications.NavTargetExtras
 import com.roadtrip.app.ui.AppShell
 import com.roadtrip.app.ui.profile.ProfilePickerScreen
 import com.roadtrip.app.ui.setup.ServerSetupScreen
+import com.roadtrip.app.ui.theme.RoadTripTheme
 import com.roadtrip.core.journal.NavTarget
 import com.roadtrip.core.settings.ServerAddress
 import com.roadtrip.core.sync.SyncTrigger
@@ -40,7 +40,8 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
 
         setContent {
-            MaterialTheme {
+            // AND-017: the app theme (colour scheme + board palette), not a bare MaterialTheme.
+            RoadTripTheme {
                 Surface {
                     val serverUrl by container.settings.serverUrl.collectAsState()
                     val profile by container.settings.selectedProfile.collectAsState()
