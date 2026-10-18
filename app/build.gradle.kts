@@ -109,6 +109,12 @@ android {
     }
 }
 
+// ANDSYNC-011: Room exports each schema version's JSON here; the files are committed so every
+// version bump can be migration-tested against the previous schema.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation("com.roadtrip:core")
 

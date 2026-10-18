@@ -12,7 +12,8 @@ import androidx.room.RoomDatabase
 /**
  * Local persistence for the core storage ports (docs/spec/01-sync.md): the outbox of
  * locally-created events, sync cursors, and a generic key->JSON cache for read models.
- * Schemas are intentionally simple; exportSchema is off (no migrations promised pre-1.0).
+ * The schema is exported to `app/schemas/` (ANDSYNC-011); open it through
+ * [RoadtripDatabaseOpener], which keeps the outbox across every schema change (ANDSYNC-009/010).
  */
 
 @Entity(tableName = "outbox")
@@ -82,10 +83,15 @@ interface CacheDao {
 
 @Database(
     entities = [OutboxEventRow::class, CursorRow::class, CacheRow::class],
-    version = 2,
-    exportSchema = false,
+    version = RoadtripDatabase.SCHEMA_VERSION,
+    exportSchema = true,
 )
 abstract class RoadtripDatabase : RoomDatabase() {
+    companion object {
+        /** Bumping this needs a registered migration in [RoadtripDatabaseOpener.MIGRATIONS]. */
+        const val SCHEMA_VERSION = 2
+    }
+
     abstract fun outboxDao(): OutboxDao
     abstract fun cursorDao(): CursorDao
     abstract fun cacheDao(): CacheDao
