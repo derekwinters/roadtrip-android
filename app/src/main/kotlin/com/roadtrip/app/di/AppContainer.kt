@@ -1,13 +1,13 @@
 package com.roadtrip.app.di
 
 import android.content.Context
-import androidx.room.Room
 import com.roadtrip.app.data.AppSettings
 import com.roadtrip.app.data.BingoCacheApplier
 import com.roadtrip.app.data.ChecklistCacheApplier
 import com.roadtrip.app.data.GamesCacheApplier
 import com.roadtrip.app.data.MapCacheApplier
 import com.roadtrip.app.data.room.RoadtripDatabase
+import com.roadtrip.app.data.room.RoadtripDatabaseOpener
 import com.roadtrip.app.data.room.RoomCacheStore
 import com.roadtrip.app.data.room.RoomCursorStore
 import com.roadtrip.app.data.room.RoomOutboxStore
@@ -120,15 +120,11 @@ class AppContainer(private val context: Context) {
 
     // ---- storage ------------------------------------------------------------------------
 
-    private val database: RoadtripDatabase = Room.databaseBuilder(
-        context.applicationContext,
-        RoadtripDatabase::class.java,
-        "roadtrip.db",
-    )
+    // Schema changes never drop the outbox: migrations, else caches-only reset (ANDSYNC-009/010).
+    private val database: RoadtripDatabase = RoadtripDatabaseOpener.builder(context, "roadtrip.db")
         // Tables are tiny (family-trip scale); synchronous core ports may be touched from
         // the main thread on user actions like posting a journal entry.
         .allowMainThreadQueries()
-        .fallbackToDestructiveMigration()
         .build()
 
     val outboxStore = RoomOutboxStore(database.outboxDao())
