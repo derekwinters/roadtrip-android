@@ -41,6 +41,12 @@ object BoardPieces {
         else -> null
     }
 
+    /**
+     * True for a crowned checkers piece (W/R). Kings draw the same disc as men with a crown
+     * glyph ([checkersGlyph]) overlaid on it (ANDGAME-025).
+     */
+    fun checkersIsKing(code: String?): Boolean = code == "W" || code == "R"
+
     /** Checkers is red vs black (never white): w/W → [PieceInk.BLACK], r/R → [PieceInk.RED]. */
     fun checkersInk(code: String?): PieceInk? = when (code) {
         "w", "W" -> PieceInk.BLACK
@@ -51,8 +57,8 @@ object BoardPieces {
 
 /**
  * Board sizing so every grid board fits the viewport without scrolling and pieces scale with
- * their square (ANDGAME-012). Pure math; the Compose layer converts the result to a bounded
- * square and a glyph font size.
+ * their square (ANDGAME-012); checkers discs are sized separately (ANDGAME-025). Pure math; the
+ * Compose layer converts the result to a bounded square, a glyph font size, or a disc diameter.
  */
 object BoardMetrics {
     /** Fraction of a square's side a piece glyph should occupy. */
@@ -64,4 +70,17 @@ object BoardMetrics {
 
     /** Piece glyph size for a given square side. */
     fun pieceGlyphSize(squareSide: Float): Float = squareSide * PIECE_GLYPH_FRACTION
+
+    /**
+     * Fraction of a square's side a checkers disc's DIAMETER occupies (ANDGAME-025). A drawn
+     * circle, never a glyph, and independent of [PIECE_GLYPH_FRACTION].
+     */
+    const val CHECKERS_PIECE_DIAMETER_FRACTION = 0.5f
+
+    /** Checkers disc diameter for a given square side (ANDGAME-025). */
+    fun checkersPieceDiameter(squareSide: Float): Float = squareSide * CHECKERS_PIECE_DIAMETER_FRACTION
+
+    /** A king's crown glyph size: [PIECE_GLYPH_FRACTION] of the disc it sits on (ANDGAME-025). */
+    fun checkersCrownGlyphSize(squareSide: Float): Float =
+        checkersPieceDiameter(squareSide) * PIECE_GLYPH_FRACTION
 }

@@ -71,6 +71,30 @@ class BoardRenderingTest {
         assertEquals(56f, BoardMetrics.pieceGlyphSize(80f))
     }
 
+    // ---- ANDGAME-025: checkers disc sizing ----------------------------------------------
+
+    @Test
+    fun `checkers disc diameter is half the square independent of the chess glyph fraction ANDGAME-025`() {
+        assertEquals(0.5f, BoardMetrics.CHECKERS_PIECE_DIAMETER_FRACTION)
+        assertEquals(50f, BoardMetrics.checkersPieceDiameter(100f))
+        assertEquals(40f, BoardMetrics.checkersPieceDiameter(80f))
+        assertEquals(0f, BoardMetrics.checkersPieceDiameter(0f))
+        // Chess glyph sizing is untouched.
+        assertEquals(0.7f, BoardMetrics.PIECE_GLYPH_FRACTION)
+        assertEquals(70f, BoardMetrics.pieceGlyphSize(100f))
+    }
+
+    @Test
+    fun `checkers kings share the man's disc with a crown sized to the disc ANDGAME-025`() {
+        assertTrue(BoardPieces.checkersIsKing("W"))
+        assertTrue(BoardPieces.checkersIsKing("R"))
+        assertTrue(!BoardPieces.checkersIsKing("w"))
+        assertTrue(!BoardPieces.checkersIsKing("r"))
+        assertTrue(!BoardPieces.checkersIsKing(null))
+        // Crown glyph is PIECE_GLYPH_FRACTION of the disc diameter, not of the square.
+        assertEquals(35f, BoardMetrics.checkersCrownGlyphSize(100f), 0.0001f)
+    }
+
     // ---- ANDGAME-014: winning line exposure ---------------------------------------------
 
     @Test

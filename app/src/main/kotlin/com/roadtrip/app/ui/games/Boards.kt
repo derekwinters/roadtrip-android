@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -49,7 +50,8 @@ import com.roadtrip.core.games.PlayerLegend
  *
  * Grid boards bound themselves to the smaller of the available width/height so the whole
  * board fits without scrolling on tablet, and piece glyphs scale to a fraction of their
- * square (ANDGAME-012). Piece glyph/ink come from the pure core [BoardPieces] mapping
+ * square (ANDGAME-012); checkers pieces are drawn discs at half the square (ANDGAME-025). Piece
+ * glyph/ink come from the pure core [BoardPieces] mapping
  * (ANDGAME-013); winning tiles are highlighted from the core win-line indices (ANDGAME-014).
  * Board/domain colours (squares, piece inks, outline shadow, origin shade) come from the theme's
  * board palette via [LocalBoardColors] (AND-018) — never raw literals here.
@@ -90,8 +92,10 @@ fun ChessBoardView(
     onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
-        pieceAt = { square -> BoardPieces.chessGlyph(board.squares[square]) },
-        inkAt = { square -> BoardPieces.chessInk(board.squares[square]) },
+        piece = { square ->
+            val glyph = BoardPieces.chessGlyph(board.squares[square])
+            if (glyph != null) PieceGlyph(glyph, BoardPieces.chessInk(board.squares[square]))
+        },
         shadeAt = { square -> lastMove?.shadeFor(square) },
         selectedSquare = selectedSquare,
         enabled = enabled,
@@ -108,8 +112,14 @@ fun CheckersBoardView(
     onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
-        pieceAt = { square -> BoardPieces.checkersGlyph(board.squares[square]) },
-        inkAt = { square -> BoardPieces.checkersInk(board.squares[square]) },
+        piece = { square ->
+            val code = board.squares[square]
+            val ink = BoardPieces.checkersInk(code)
+            if (ink != null) {
+                val crown = if (BoardPieces.checkersIsKing(code)) BoardPieces.checkersGlyph(code) else null
+                CheckersDisc(ink, crown)
+            }
+        },
         shadeAt = { square -> lastMove?.shadeFor(square) },
         selectedSquare = selectedSquare,
         enabled = enabled,
@@ -166,10 +176,44 @@ private fun PieceGlyph(glyph: String, ink: PieceInk?) {
     }
 }
 
+/**
+ * A checkers piece (ANDGAME-025): a drawn circle whose diameter is
+ * [BoardMetrics.checkersPieceDiameter] of the square — never sized from font/glyph metrics —
+ * filled with the board palette's ink. A king overlays its [crown] glyph on the SAME disc, sized
+ * to the disc ([BoardMetrics.checkersCrownGlyphSize]) and inked with the white-piece token so it
+ * reads on red and black alike; men and kings therefore read at the same size. The disc sits
+ * inside the square, leaving the last-move shade and selected border visible around it.
+ */
+@Composable
+private fun CheckersDisc(ink: PieceInk, crown: String?) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val squareSide = minOf(maxWidth, maxHeight)
+        val diameter = BoardMetrics.checkersPieceDiameter(squareSide.value).dp
+        val boardColors = LocalBoardColors.current
+        Box(
+            modifier = Modifier
+                .size(diameter)
+                .background(ink.toStyle(boardColors).color, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (crown != null) {
+                val crownSize = with(LocalDensity.current) {
+                    BoardMetrics.checkersCrownGlyphSize(squareSide.value).dp.toSp()
+                }
+                Text(
+                    text = crown,
+                    fontSize = crownSize,
+                    color = boardColors.pieceWhite,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun EightByEight(
-    pieceAt: (String) -> String?,
-    inkAt: (String) -> PieceInk?,
+    piece: @Composable (String) -> Unit,
     shadeAt: (String) -> LastMoveShade?,
     selectedSquare: String?,
     enabled: Boolean,
@@ -208,10 +252,7 @@ private fun EightByEight(
                                 .clickable(enabled = enabled) { onSquareTap(square) },
                             contentAlignment = Alignment.Center,
                         ) {
-                            val glyph = pieceAt(square)
-                            if (glyph != null) {
-                                PieceGlyph(glyph, inkAt(square))
-                            }
+                            piece(square)
                         }
                     }
                 }
