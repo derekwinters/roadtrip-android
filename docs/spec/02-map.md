@@ -35,6 +35,7 @@ on-device tile cache so the last-viewed region works offline).
 | ANDMAP-012 | While the map screen is foregrounded, the in-app live refresh (ANDSYNC-008) re-pulls the destination list alongside `GET /api/map`, so a parent viewing the map keeps mid-trip destination adds/removes/reorders and arrivals landing in the panel current without leaving the screen — otherwise local pings keep moving the "current" dot while the frozen active-destination marker and remaining distance go stale (issue #134). The per-screen read-model set is the pure `ForegroundRefreshTargets` mapping in core. | auto |
 | ANDMAP-013 | A live (in-trip) parent destination write immediately re-pulls the live destination list AND the map state — the server having recomputed the active destination and remaining distance — mirroring how a staged write refreshes the planned trip's staged itinerary (ANDTRIP-007); the change appears at once rather than after the next foreground refresh (issue #134). The staged-vs-live target set is the pure `DestinationWriteRefresh` decision in core. All server-side geodesy stays on the backend (ANDMAP-002); the client only re-pulls and renders. | auto |
 | ANDMAP-014 | The destination panel offers a manual **End leg** safety net (`POST /api/trip/leg/end`, backend LOC-013) for when automatic arrival never fires: it marks the active destination arrived now without advancing to the next stop. Like End trip it is parent-only, online-only, and always dialog-confirmed (ANDTRIP-001/004); it is shown only while a destination is `active` — hidden between trips, while staging a planned trip, and for kids. On success it writes through the live destination list and the map immediately (the same `DestinationWriteRefresh` targets as a live destination write, ANDMAP-013). The availability + refresh decision is the pure `EndLegControl` in core. | auto |
+| ANDMAP-015 | Tapping a marker toggles its selection: tapping an unselected marker selects it and shows its label; tapping the selected marker again deselects it and closes the label; tapping a different marker moves the selection (closing the first label, opening the second); tapping the empty map background deselects and closes any open label. The selection survives marker refreshes while the selected marker is still present (and its label stays open); if it disappears, the selection is cleared. Invariant: only select/deselect interaction changes — which markers a role sees (ANDMAP-001), kind-based styling (ANDMAP-010) and long-press destination creation (ANDMAP-006) are untouched. The selection decision is the pure `MarkerSelection` in core; the osmdroid marker-click listener and background-tap handler are thin glue (issue #163). | auto |
 
 ## Marker iconography
 
@@ -51,6 +52,17 @@ core maps each kind to a `MarkerStyle`, which the app module renders as a vector
 
 Each drawable bakes in its own fill plus a white outline so it stays legible over map tiles and
 the breadcrumb polyline in both light and dark themes, rather than depending on a theme color.
+
+## Marker selection
+
+osmdroid's default marker click only *opens* an info window, so a label could never be dismissed
+(issue #163). The app replaces it with a toggle driven by the pure `MarkerSelection` in core
+(ANDMAP-015). A marker's selection identity is its kind plus position — except the current
+position, which moves with every ping and is identified by its kind alone — so a refresh that
+keeps the marker keeps it selected and re-opens its label on the rebuilt overlay, while a marker
+that is gone (or changed kind, e.g. the active destination after arrival) clears the selection.
+Background taps arrive through the same `MapEventsOverlay` as the parent long-press; the two are
+distinct gestures, and a background tap is consumed only when it actually closed a label.
 
 ## Address search
 
