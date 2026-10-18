@@ -32,6 +32,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roadtrip.app.ui.theme.BoardColors
+import com.roadtrip.app.ui.theme.LocalBoardColors
 import com.roadtrip.core.games.BoardMetrics
 import com.roadtrip.core.games.BoardPieces
 import com.roadtrip.core.games.BoardState
@@ -49,10 +51,9 @@ import com.roadtrip.core.games.PlayerLegend
  * board fits without scrolling on tablet, and piece glyphs scale to a fraction of their
  * square (ANDGAME-012). Piece glyph/ink come from the pure core [BoardPieces] mapping
  * (ANDGAME-013); winning tiles are highlighted from the core win-line indices (ANDGAME-014).
+ * Board/domain colours (squares, piece inks, outline shadow, origin shade) come from the theme's
+ * board palette via [LocalBoardColors] (AND-018) — never raw literals here.
  */
-
-private val LIGHT_SQUARE = Color(0xFFF0D9B5)
-private val DARK_SQUARE = Color(0xFFB58863)
 
 /**
  * The active/selected-square box: a 3.dp primary border (ANDGAME-012). Shared by the chess/
@@ -75,7 +76,7 @@ private fun Modifier.activeSquareBorder(): Modifier =
 private fun lastMoveShadeColor(shade: LastMoveShade?): Color? = when (shade) {
     null -> null
     LastMoveShade.MARK_FILL -> MaterialTheme.colorScheme.primaryContainer
-    LastMoveShade.PIECE_ORIGIN -> Color.Black.copy(alpha = 0.38f)
+    LastMoveShade.PIECE_ORIGIN -> LocalBoardColors.current.lastMoveOriginShade
     LastMoveShade.PIECE_DESTINATION -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
     LastMoveShade.PIECE_CAPTURE -> MaterialTheme.colorScheme.error.copy(alpha = 0.32f)
 }
@@ -132,11 +133,11 @@ private fun BoardBox(content: @Composable BoxScope.() -> Unit) {
 
 private data class PieceStyle(val color: Color, val outline: Boolean)
 
-private fun PieceInk.toStyle(): PieceStyle = when (this) {
+private fun PieceInk.toStyle(colors: BoardColors): PieceStyle = when (this) {
     // White fill with a dark outline so it reads on the light square (ANDGAME-013).
-    PieceInk.WHITE_OUTLINED -> PieceStyle(Color.White, outline = true)
-    PieceInk.BLACK -> PieceStyle(Color(0xFF1A1A1A), outline = false)
-    PieceInk.RED -> PieceStyle(Color(0xFFC62828), outline = false)
+    PieceInk.WHITE_OUTLINED -> PieceStyle(colors.pieceWhite, outline = true)
+    PieceInk.BLACK -> PieceStyle(colors.pieceBlack, outline = false)
+    PieceInk.RED -> PieceStyle(colors.pieceRed, outline = false)
 }
 
 /** A piece glyph sized to ~70% of its square (ANDGAME-012), tinted/outlined by ink. */
@@ -146,10 +147,11 @@ private fun PieceGlyph(glyph: String, ink: PieceInk?) {
         val fontSize = with(LocalDensity.current) {
             (minOf(maxWidth, maxHeight) * BoardMetrics.PIECE_GLYPH_FRACTION).toSp()
         }
-        val style = ink?.toStyle()
+        val boardColors = LocalBoardColors.current
+        val style = ink?.toStyle(boardColors)
         val textStyle = if (style?.outline == true) {
             LocalTextStyle.current.copy(
-                shadow = Shadow(color = Color(0xFF2B2B2B), offset = Offset.Zero, blurRadius = 8f),
+                shadow = Shadow(color = boardColors.pieceOutlineShadow, offset = Offset.Zero, blurRadius = 8f),
             )
         } else {
             LocalTextStyle.current
@@ -173,6 +175,7 @@ private fun EightByEight(
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
 ) {
+    val boardColors = LocalBoardColors.current
     BoardBox {
         Column(modifier = Modifier.fillMaxSize()) {
             for (rank in 8 downTo 1) {
@@ -181,7 +184,7 @@ private fun EightByEight(
                         val square = "$file$rank"
                         // a1 dark, h1 light — matches the core checkers piece layout.
                         val darkSquare = (fileIndex + rank) % 2 == 1
-                        val background = if (darkSquare) DARK_SQUARE else LIGHT_SQUARE
+                        val background = if (darkSquare) boardColors.darkSquare else boardColors.lightSquare
                         // Last-move shade (ANDGAME-024): a translucent overlay composited over the
                         // wood square (origin greyed dark, destination dim accent, capture dim
                         // error). It sits UNDER the piece glyph and is distinct from the selected-
