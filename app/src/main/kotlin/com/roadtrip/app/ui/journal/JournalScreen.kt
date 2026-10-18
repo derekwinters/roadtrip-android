@@ -1,5 +1,8 @@
 package com.roadtrip.app.ui.journal
 
+import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +21,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +38,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.roadtrip.app.di.AppContainer
@@ -56,7 +64,8 @@ import kotlinx.coroutines.withContext
 /**
  * The home screen: shared family feed (docs/spec/04-journal.md). All entry kinds render
  * distinctly (ANDJRNL-001); the composer queues offline posts that appear immediately
- * marked "syncing" (ANDJRNL-002); rows deep-link per kind (ANDJRNL-004); a refresh action
+ * marked "syncing" (ANDJRNL-002); rows deep-link per kind (ANDJRNL-004) and a stop row's
+ * coordinates copy on press-and-hold (ANDJRNL-009); a refresh action
  * syncs forward and "load older" pages backward with the before cursor (ANDJRNL-005).
  */
 @Composable
@@ -148,6 +157,7 @@ fun JournalScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun JournalRow(item: JournalFeedItem, onNavigate: (NavTarget) -> Unit) {
     // A row's emphasis is independent of whether it deep-links; only navigability is gated by
@@ -156,7 +166,27 @@ private fun JournalRow(item: JournalFeedItem, onNavigate: (NavTarget) -> Unit) {
     // clickable overload for navigation (ANDJRNL-004).
     val presentation = JournalRowPresenter.present(item)
     val target = presentation.navTarget
-    if (target != null) {
+    val copyText = presentation.copyText
+    if (copyText != null) {
+        // A stop row with a pin: tap anywhere on the row opens the map on the pin
+        // (ANDJRNL-004); press-and-hold copies "lat, lon" locally — no network (ANDJRNL-009).
+        val clipboard = LocalClipboardManager.current
+        val context = LocalContext.current
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CardDefaults.shape)
+                .combinedClickable(
+                    onClickLabel = "Open on map",
+                    onLongClickLabel = "Copy coordinates",
+                    onLongClick = {
+                        clipboard.setText(AnnotatedString(copyText))
+                        Toast.makeText(context, "Coordinates copied", Toast.LENGTH_SHORT).show()
+                    },
+                    onClick = { target?.let(onNavigate) },
+                ),
+        ) { JournalRowContent(item) }
+    } else if (target != null) {
         Card(
             onClick = { onNavigate(target) },
             modifier = Modifier.fillMaxWidth(),

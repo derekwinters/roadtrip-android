@@ -2,6 +2,7 @@ package com.roadtrip.core.journal
 
 import com.roadtrip.core.api.DeepLink
 import com.roadtrip.core.api.DeepLinkKind
+import java.util.Locale
 
 /** Navigation targets the app's NavHost maps to routes. */
 sealed class NavTarget {
@@ -45,6 +46,8 @@ object DeepLinkRouter {
 data class JournalRowPresentation(
     val navTarget: NavTarget?,
     val fullEmphasis: Boolean,
+    /** Clipboard text for press-and-hold, or `null` when the row offers no copy (ANDJRNL-009). */
+    val copyText: String? = null,
 ) {
     val navigable: Boolean get() = navTarget != null
 }
@@ -60,5 +63,26 @@ object JournalRowPresenter {
         JournalRowPresentation(
             navTarget = item.link?.let(DeepLinkRouter::route),
             fullEmphasis = true,
+            copyText = (item.display as? JournalDisplay.Stop)?.pin?.let(StopCoordinates::of),
         )
+}
+
+/**
+ * Copyable stop coordinates (ANDJRNL-009): `lat, lon` in decimal degrees to
+ * [DECIMAL_PLACES] places, always with a `.` decimal separator. Pure — reads only the
+ * cached pin, so copying never depends on connectivity.
+ */
+object StopCoordinates {
+    const val DECIMAL_PLACES = 5
+
+    private const val PATTERN = "%.${DECIMAL_PLACES}f, %.${DECIMAL_PLACES}f"
+
+    fun format(lat: Double, lon: Double): String = String.format(Locale.ROOT, PATTERN, lat, lon)
+
+    /** The copy text for a stop pin, or `null` when either coordinate is missing. */
+    fun of(pin: DeepLink): String? {
+        val lat = pin.lat ?: return null
+        val lon = pin.lon ?: return null
+        return format(lat, lon)
+    }
 }
