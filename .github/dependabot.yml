@@ -1,9 +1,21 @@
 # Grouped weekly dependency updates with a 14-day cooldown, so updates arrive as a
 # few consolidated PRs instead of a stream of singletons.
 #
-# For gradle, the group only covers minor and patch updates. Major updates arrive
+# For gradle, the groups only cover minor and patch updates. Major updates arrive
 # as their own individual PRs, so one breaking major upgrade can't block every
 # harmless update that would otherwise share its grouped PR.
+#
+# Kotlin, KSP and AGP are coupled (KSP releases are pinned to a Kotlin version, and
+# AGP gates which Kotlin it supports), so they update together in their own
+# `gradle-toolchain` group and are excluded from `gradle-dependencies`; every
+# dependency belongs to exactly one group (AND-017). The Kotlin patterns match
+# `org.jetbrains.kotlin:*` artifacts and `org.jetbrains.kotlin.*` plugin ids only —
+# not the separately versioned `org.jetbrains.kotlinx` libraries — and `com.android.*`
+# never matches `androidx.*` coordinates.
+#
+# Dependabot PRs close no issue, so they carry `no-closing-keyword` for the
+# closing-keyword gate. Setting `labels:` replaces Dependabot's defaults, so those
+# (`dependencies` plus the ecosystem label) are listed explicitly.
 version: 2
 updates:
   - package-ecosystem: gradle
@@ -12,10 +24,28 @@ updates:
       interval: weekly
     cooldown:
       default-days: 14
+    labels:
+      - dependencies
+      - java
+      - no-closing-keyword
     groups:
+      gradle-toolchain:
+        patterns:
+          - 'org.jetbrains.kotlin:*'
+          - 'org.jetbrains.kotlin.*'
+          - 'com.google.devtools.ksp*'
+          - 'com.android.*'
+        update-types:
+          - minor
+          - patch
       gradle-dependencies:
         patterns:
           - '*'
+        exclude-patterns:
+          - 'org.jetbrains.kotlin:*'
+          - 'org.jetbrains.kotlin.*'
+          - 'com.google.devtools.ksp*'
+          - 'com.android.*'
         update-types:
           - minor
           - patch
@@ -26,6 +56,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 14
+    labels:
+      - dependencies
+      - github_actions
+      - no-closing-keyword
     groups:
       actions:
         patterns:
