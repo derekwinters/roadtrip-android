@@ -3,7 +3,7 @@ package com.roadtrip.app.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /*
- * The app palette (AND-017): every raw colour value the UI uses lives here, as a named token.
+ * The app palette (AND-018): every raw colour value the UI uses lives here, as a named token.
  * Feature screens never write `Color(0x…)`; they read `MaterialTheme.colorScheme` roles or the
  * board palette (`LocalBoardColors`).
  *

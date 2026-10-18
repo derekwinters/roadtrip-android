@@ -52,7 +52,7 @@ import com.roadtrip.core.games.PlayerLegend
  * square (ANDGAME-012). Piece glyph/ink come from the pure core [BoardPieces] mapping
  * (ANDGAME-013); winning tiles are highlighted from the core win-line indices (ANDGAME-014).
  * Board/domain colours (squares, piece inks, outline shadow, origin shade) come from the theme's
- * board palette via [LocalBoardColors] (AND-017) — never raw literals here.
+ * board palette via [LocalBoardColors] (AND-018) — never raw literals here.
  */
 
 /**

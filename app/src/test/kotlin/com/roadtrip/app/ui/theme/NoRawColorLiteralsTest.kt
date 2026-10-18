@@ -5,7 +5,7 @@ import kotlin.test.assertTrue
 import org.junit.Test
 
 /**
- * covers: AND-017 — no feature UI source hardcodes a raw `Color(0x…)` literal; raw colour values
+ * covers: AND-018 — no feature UI source hardcodes a raw `Color(0x…)` literal; raw colour values
  * live only in the theme package, and the activity wraps the UI in the app theme rather than a
  * bare `MaterialTheme`. Reads the sources directly (Gradle runs unit tests from the module dir).
  */

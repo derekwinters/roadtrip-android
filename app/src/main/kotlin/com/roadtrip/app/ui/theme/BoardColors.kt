@@ -5,7 +5,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Board/domain colours (AND-017) as named tokens in one palette object. They are not forced into
+ * Board/domain colours (AND-018) as named tokens in one palette object. They are not forced into
  * `colorScheme` roles: a wood board square or a chess piece ink has no Material role. Boards read
  * them through [LocalBoardColors], which [RoadTripTheme] provides, so a dark variant is a new
  * [BoardColors] instance here — `Boards.kt` does not change.
@@ -28,7 +28,7 @@ data class BoardColors(
     val lastMoveOriginShade: Color,
 )
 
-/** The board palette for the light theme — the board's colours before AND-017, unchanged. */
+/** The board palette for the light theme — the board's colours before AND-018, unchanged. */
 val LightBoardColors = BoardColors(
     lightSquare = BoardLightSquare,
     darkSquare = BoardDarkSquare,

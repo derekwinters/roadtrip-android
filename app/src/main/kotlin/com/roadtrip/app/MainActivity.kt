@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
 
         setContent {
-            // AND-017: the app theme (colour scheme + board palette), not a bare MaterialTheme.
+            // AND-018: the app theme (colour scheme + board palette), not a bare MaterialTheme.
             RoadTripTheme {
                 Surface {
                     val serverUrl by container.settings.serverUrl.collectAsState()

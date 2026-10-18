@@ -6,7 +6,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 
-/** The app's light colour scheme (AND-017), built from the named palette in `Color.kt`. */
+/** The app's light colour scheme (AND-018), built from the named palette in `Color.kt`. */
 val AppLightColorScheme: ColorScheme = lightColorScheme(
     primary = LightPrimary,
     onPrimary = LightOnPrimary,
@@ -47,7 +47,7 @@ val AppLightColorScheme: ColorScheme = lightColorScheme(
 )
 
 /**
- * The app theme (AND-017): wraps the UI in the app [ColorScheme] and provides the board palette
+ * The app theme (AND-018): wraps the UI in the app [ColorScheme] and provides the board palette
  * through [LocalBoardColors]. Only a light scheme exists today; a dark variant adds a dark
  * [ColorScheme] and [BoardColors] here and selects them, with no change to feature screens.
  */

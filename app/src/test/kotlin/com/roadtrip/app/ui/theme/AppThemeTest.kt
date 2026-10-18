@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 import org.junit.Test
 
 /**
- * covers: AND-017 — the app theme is a defined palette with no visual change: every colour role
+ * covers: AND-018 — the app theme is a defined palette with no visual change: every colour role
  * of the app light scheme equals the Material 3 baseline (`lightColorScheme()` defaults) the bare
  * `MaterialTheme {}` rendered with before, and the board palette keeps the board's prior colours.
  */

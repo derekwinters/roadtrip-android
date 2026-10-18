@@ -54,8 +54,11 @@ import com.roadtrip.core.map.MapMarker
 import com.roadtrip.core.map.MapScreenReducer
 import com.roadtrip.core.map.MapScreenState
 import com.roadtrip.core.map.MarkerKind
+import com.roadtrip.core.map.MarkerSelection
+import com.roadtrip.core.map.MarkerSelectionKey
 import com.roadtrip.core.map.MarkerStyle
 import com.roadtrip.core.map.markerStyleFor
+import com.roadtrip.core.map.selectionKey
 import com.roadtrip.core.trips.TripAction
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +72,7 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
+import org.osmdroid.views.overlay.infowindow.InfoWindow
 
 /**
  * "You are here" map (docs/spec/02-map.md). osmdroid renders OSM tiles with its on-device
@@ -225,6 +229,9 @@ private fun OsmMap(
     val longPress = rememberUpdatedState(onLongPress)
     val longPressEnabled = rememberUpdatedState(allowLongPress)
     var centered by remember { mutableStateOf(false) }
+    // Plain holder (not Compose state) so a tap updates osmdroid directly without forcing an
+    // overlay rebuild; the decision itself is the pure core MarkerSelection (ANDMAP-015).
+    val selection = remember { MarkerSelectionHolder() }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
@@ -237,7 +244,15 @@ private fun OsmMap(
                 controller.setCenter(OsmGeoPoint(39.5, -98.35)) // continental US until data arrives
                 overlays.add(
                     MapEventsOverlay(object : MapEventsReceiver {
-                        override fun singleTapConfirmedHelper(p: OsmGeoPoint?): Boolean = false
+                        // Background tap (markers are above this overlay and consume their
+                        // own taps): deselect and close any open label (ANDMAP-015). Consumed
+                        // only when it actually closed one; long-press stays separate below.
+                        override fun singleTapConfirmedHelper(p: OsmGeoPoint?): Boolean {
+                            if (selection.key == null) return false
+                            selection.key = MarkerSelection.onBackgroundTap(selection.key)
+                            InfoWindow.closeAllInfoWindowsOn(this@apply)
+                            return true
+                        }
 
                         override fun longPressHelper(p: OsmGeoPoint?): Boolean {
                             if (p == null || !longPressEnabled.value) return false
@@ -253,6 +268,11 @@ private fun OsmMap(
             if (state != null) {
                 // Rebuild overlays from reducer output; the events overlay stays first.
                 val eventsOverlay = mapView.overlays.firstOrNull { it is MapEventsOverlay }
+                // The old Marker objects are discarded, so close their labels; the selection is
+                // kept only if its marker survives the refresh, and re-opened below (ANDMAP-015).
+                InfoWindow.closeAllInfoWindowsOn(mapView)
+                selection.key = MarkerSelection.reconcile(selection.key, state.markers)
+                var selectedOsmMarker: Marker? = null
                 mapView.overlays.clear()
                 eventsOverlay?.let { mapView.overlays.add(it) }
 
@@ -275,8 +295,25 @@ private fun OsmMap(
                     ContextCompat.getDrawable(mapView.context, markerDrawableRes(marker.kind))
                         ?.let { osmMarker.icon = it }
                     osmMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    // Toggle instead of osmdroid's default open-only click (ANDMAP-015).
+                    val key = marker.selectionKey()
+                    osmMarker.setOnMarkerClickListener { tapped, view ->
+                        // osmdroid's bubble closes itself when tapped; don't treat a marker whose
+                        // label is no longer showing as still selected.
+                        val current = selection.key
+                            .takeUnless { it == key && !tapped.isInfoWindowShown }
+                        selection.key = MarkerSelection.onMarkerTap(current, key)
+                        InfoWindow.closeAllInfoWindowsOn(view)
+                        if (selection.key != null) {
+                            tapped.showInfoWindow()
+                            view.controller.animateTo(tapped.position)
+                        }
+                        true
+                    }
+                    if (key == selection.key) selectedOsmMarker = osmMarker
                     mapView.overlays.add(osmMarker)
                 }
+                selectedOsmMarker?.showInfoWindow()
 
                 if (!centered) {
                     centered = true
@@ -294,6 +331,11 @@ private fun OsmMap(
             }
         },
     )
+}
+
+/** The currently selected marker, if any (ANDMAP-015); `null` means no label is open. */
+private class MarkerSelectionHolder {
+    var key: MarkerSelectionKey? = null
 }
 
 private fun markerTitle(marker: MapMarker): String = when (marker.kind) {
