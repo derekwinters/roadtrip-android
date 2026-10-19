@@ -1,6 +1,8 @@
 package com.roadtrip.app.ui.checklist
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,9 +16,12 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,27 +35,49 @@ import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.OfflineBanner
 import com.roadtrip.app.ui.common.SectionHeader
 import com.roadtrip.app.ui.common.formatFeedTime
+import com.roadtrip.core.api.Profile
+import com.roadtrip.core.common.Role
 import com.roadtrip.core.settings.ChecklistExpansion
 import com.roadtrip.core.settings.ChecklistReducer
 import com.roadtrip.core.settings.ChecklistScreenState
+import com.roadtrip.core.settings.StopNameDraft
+import com.roadtrip.core.settings.StopNameSave
+import com.roadtrip.core.settings.StopNaming
 
 /**
  * Checklist screen (ANDSET-003): one States section whose rows are collapsible groups of
  * their cities (ANDSET-009–012), then stops, from the cached GET /api/checklist read model;
  * states light up as crossings arrive via the event feed (applied to the cache by the sync
  * pass). Deep links from state-crossing journal rows highlight and expand the crossed state
- * (ANDJRNL-004, ANDSET-011). Grouping and expansion rules live in core; this only renders.
+ * (ANDJRNL-004, ANDSET-011). A parent can press-and-hold a stop row to name it
+ * (ANDSET-013–016). Grouping, expansion and naming rules live in core; this only renders.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChecklistScreen(
     container: AppContainer,
+    profile: Profile,
     highlightStateCode: String?,
 ) {
     val tick by container.refreshTick.collectAsState()
     val online by container.onlineMonitor.online.collectAsState()
 
+    // Pending stop names overlay the cache so a saved name shows at once, offline too (ANDSET-016).
     val state: ChecklistScreenState? = remember(tick) {
-        container.checklistCache.read()?.value?.let(ChecklistReducer::fromDto)
+        container.checklistCache.read()?.value?.let {
+            ChecklistReducer.fromDto(it, container.outboxStore.pending())
+        }
+    }
+    var naming by remember { mutableStateOf<StopNameDraft?>(null) }
+
+    naming?.let { draft ->
+        StopNameDialog(
+            draft = draft,
+            onSave = { name ->
+                if (container.nameStop(draft.stopId, name) is StopNameSave.Saved) naming = null
+            },
+            onDismiss = { naming = null },
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -134,19 +161,29 @@ fun ChecklistScreen(
             }
 
             item { SectionHeader("Stops (${state.stops.size})") }
-            items(state.stops) { row ->
+            items(state.stops, key = { "stop-${it.stopId}" }) { row ->
+                // Press-and-hold names the stop — parents only; kids get no affordance (ANDSET-014).
+                val canName = profile.role == Role.PARENT
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (canName) {
+                                Modifier.combinedClickable(
+                                    onLongClickLabel = "Name this stop",
+                                    onLongClick = { naming = StopNaming.open(row, profile.role) },
+                                    onClick = {},
+                                )
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(vertical = 4.dp),
                 ) {
                     Icon(Icons.Filled.Place, contentDescription = null)
                     Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                        Text(
-                            row.place ?: "%.4f, %.4f".let {
-                                String.format(java.util.Locale.US, it, row.lat, row.lon)
-                            },
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                        Text(row.displayName, style = MaterialTheme.typography.bodyLarge)
                         val details = buildList {
                             row.startedAt?.let { add(formatFeedTime(it)) }
                             row.durationMin?.let { add("${it.toInt()} min") }
@@ -162,3 +199,35 @@ fun ChecklistScreen(
 }
 
 private fun cityCountLabel(count: Int): String = if (count == 1) "1 city" else "$count cities"
+
+/**
+ * "Name this stop" (ANDSET-014/015): pre-filled by core, Save disabled while the name is
+ * blank — a stop's name can be changed but never cleared.
+ */
+@Composable
+private fun StopNameDialog(
+    draft: StopNameDraft,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember(draft) { mutableStateOf(draft.initialText) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Name this stop") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Stop name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name) }, enabled = StopNaming.canSave(name)) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}

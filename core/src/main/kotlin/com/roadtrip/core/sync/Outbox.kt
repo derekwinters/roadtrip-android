@@ -32,6 +32,7 @@ data class OutboxEntry(
         const val TYPE_LOCATION_PING = "location.ping"
         const val TYPE_PLATE_SPOTTED = "plate.spotted"
         const val TYPE_PLATE_UNSPOTTED = "plate.unspotted"
+        const val TYPE_STOP_LABELED = "location.stop.labeled"
     }
 }
 
@@ -87,6 +88,25 @@ class OutboxQueue(
             type,
             clientTs = clock.now(),
             payload = buildJsonObject { put("state_code", stateCode) },
+        )
+    }
+
+    /**
+     * covers: ANDSET-015 — names a checklist stop by its backend `stop_id` (never by
+     * lat/lon/time), stamped with the save time. The label is trimmed and must not be blank;
+     * its upper bound (`stop_label_max_chars`) is enforced by the server.
+     */
+    fun enqueueStopLabel(stopId: String, label: String): OutboxEntry {
+        val trimmed = label.trim()
+        require(stopId.isNotBlank()) { "stop_id must not be blank" }
+        require(trimmed.isNotEmpty()) { "stop label must not be blank" }
+        return enqueue(
+            OutboxEntry.TYPE_STOP_LABELED,
+            clientTs = clock.now(),
+            payload = buildJsonObject {
+                put("stop_id", stopId)
+                put("label", trimmed)
+            },
         )
     }
 
