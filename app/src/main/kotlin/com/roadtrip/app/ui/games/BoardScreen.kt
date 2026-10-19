@@ -53,6 +53,7 @@ import com.roadtrip.core.games.PlayerLegend
 import com.roadtrip.core.games.ReplayEngine
 import com.roadtrip.core.games.ReplaySession
 import com.roadtrip.core.games.ResignPrompts
+import com.roadtrip.core.games.StagedMove
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -210,6 +211,10 @@ fun BoardScreen(
         }
     }
 
+    // The staged {from, to} move shown on chess/checkers while it waits for Confirm (ANDGAME-026):
+    // a fill on both squares, the board position itself untouched. Null for other games.
+    val stagedHighlight = currentGame?.let { StagedMove.highlight(it.gameType, stagedMove) }
+
     // The single most-recent move to highlight (ANDGAME-024), resolved from the same move stream
     // and live cursor the board renders — so it updates over the ANDGAME-005 long-poll and resets
     // on each new move. Hangman's board comes from the server view, but the guessed letter is not
@@ -249,6 +254,7 @@ fun BoardScreen(
     fun confirmStagedMove() {
         val move = stagedMove ?: return
         stagedMove = null
+        selectedSquare = null
         submitMove(move)
     }
 
@@ -277,7 +283,9 @@ fun BoardScreen(
                     put("from", from)
                     put("to", square)
                 }
-                selectedSquare = null
+                // ANDGAME-026: the origin stays selected while the move waits for Confirm, and
+                // clears when it submits at once.
+                selectedSquare = StagedMove.selectionAfterRequest(from, confirmMoves)
                 requestMove(move)
             }
         }
@@ -322,7 +330,10 @@ fun BoardScreen(
                             onCheckedChange = { checked ->
                                 confirmMoves = checked
                                 container.settings.set(profile.id, currentGame.gameType, checked)
-                                if (!checked) stagedMove = null
+                                if (!checked) {
+                                    stagedMove = null
+                                    selectedSquare = null
+                                }
                             },
                         )
                     }
@@ -347,6 +358,7 @@ fun BoardScreen(
                             lastMove = lastMove as? LastMoveHighlight.PieceMove,
                             enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
+                            staged = stagedHighlight,
                         )
                         is BoardState.CheckersBoard -> CheckersBoardView(
                             board = board,
@@ -354,6 +366,7 @@ fun BoardScreen(
                             lastMove = lastMove as? LastMoveHighlight.PieceMove,
                             enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
+                            staged = stagedHighlight,
                         )
                         is BoardState.TttBoard -> TttBoardView(
                             board = board,
@@ -399,9 +412,14 @@ fun BoardScreen(
                 // Staged-move confirmation controls (ANDGAME-022): shown only while a move waits
                 // for confirmation. Confirm submits it exactly once through the same optimistic
                 // path; Cancel discards it and restores the pre-move board (clears the selection).
+                // Chess/checkers name the move ("Confirm e2 → e4?", ANDGAME-026); the other games
+                // keep the generic prompt.
                 if (stagedMove != null) {
                     Spacer(Modifier.height(8.dp))
-                    Text("Confirm your move?", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        StagedMove.prompt(currentGame.gameType, stagedMove),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { confirmStagedMove() }) { Text("Confirm") }
                         Spacer(Modifier.width(8.dp))
