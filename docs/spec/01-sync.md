@@ -5,7 +5,9 @@ Implements the client side of backend spec `09-sync-notifications.md`.
 ## Design
 
 - **Outbox**: every locally-created event (`journal.post` from anyone, `location.ping` from
-  parent-enabled tracker devices) is written to a Room `outbox` table with a client-generated
+  parent-enabled tracker devices, `plate.spotted` / `plate.unspotted` from anyone (ANDBNG-001/002),
+  `location.stop.labeled {stop_id, label}` from parents naming a checklist stop (ANDSET-015))
+  is written to a Room `outbox` table with a client-generated
   UUID `event_id` and `client_ts` at creation time, regardless of connectivity. Entries may
   carry an `actor_profile_id` attribution override (ANDLOC-008).
 - **Flush**: a sync pass sends outbox rows in `client_ts` order via `POST /api/sync/batch`

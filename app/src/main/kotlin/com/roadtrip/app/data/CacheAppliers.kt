@@ -11,9 +11,11 @@ import com.roadtrip.core.api.TrackPoint
 import com.roadtrip.core.bingo.BingoReducer
 import com.roadtrip.core.common.Clock
 import com.roadtrip.core.games.LobbyReducer
+import com.roadtrip.core.settings.ChecklistReducer
 import com.roadtrip.core.storage.CacheStore
 import com.roadtrip.core.storage.CursorStore
 import com.roadtrip.core.sync.EventApplier
+import com.roadtrip.core.sync.OutboxEntry
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -59,18 +61,27 @@ class MapCacheApplier(
     }
 }
 
-/** Lights up newly-crossed states in the cached checklist (ANDSET-003). */
+/**
+ * Lights up newly-crossed states in the cached checklist (ANDSET-003) and folds synced stop
+ * names into the cached stops (ANDSET-016) via the core reducer.
+ */
 class ChecklistCacheApplier(
     private val cache: CacheStore<Checklist>,
     cursors: CursorStore,
     private val clock: Clock,
 ) : SeqGuardedApplier(cursors, "applied_checklist_seq") {
     override fun applyFresh(events: List<EventDto>) {
-        val crossings = events.filter { it.type == "location.crossing.state" }
-        if (crossings.isEmpty()) return
+        val relevant = events.filter {
+            it.type == "location.crossing.state" || it.type == OutboxEntry.TYPE_STOP_LABELED
+        }
+        if (relevant.isEmpty()) return
         val cached = cache.read() ?: return
         var checklist = cached.value
-        for (event in crossings) {
+        for (event in relevant) {
+            if (event.type == OutboxEntry.TYPE_STOP_LABELED) {
+                checklist = ChecklistReducer.applyToCache(checklist, event)
+                continue
+            }
             val code = event.payload["state_code"]?.jsonPrimitive?.contentOrNull ?: continue
             if (checklist.states.any { it.stateCode == code }) continue
             val name = event.payload["state"]?.jsonPrimitive?.contentOrNull ?: code

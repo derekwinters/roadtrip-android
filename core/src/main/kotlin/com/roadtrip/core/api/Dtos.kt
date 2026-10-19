@@ -244,13 +244,20 @@ data class ChecklistCityEntry(
     @SerialName("first_at") val firstAt: String? = null,
 )
 
+/**
+ * A server-detected checklist stop (backend LIST-003) — not a map [Destination] or a [Leg].
+ * `stop_id` is the stable id a `location.stop.labeled` event targets; `label` is present
+ * only once a parent has named the stop (ANDSET-003).
+ */
 @Serializable
 data class ChecklistStopEntry(
+    @SerialName("stop_id") val stopId: String,
     val lat: Double,
     val lon: Double,
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("duration_min") val durationMin: Double? = null,
     val place: String? = null,
+    val label: String? = null,
 )
 
 @Serializable

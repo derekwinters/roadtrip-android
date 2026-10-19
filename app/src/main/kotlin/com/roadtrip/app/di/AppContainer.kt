@@ -38,6 +38,8 @@ import com.roadtrip.core.journal.JournalComposer
 import com.roadtrip.core.map.EndLegControl
 import com.roadtrip.core.notifications.NotificationPipeline
 import com.roadtrip.core.notifications.VisibleContext
+import com.roadtrip.core.settings.StopNameSave
+import com.roadtrip.core.settings.StopNaming
 import com.roadtrip.core.storage.CacheStore
 import com.roadtrip.core.storage.CursorStore
 import com.roadtrip.core.sync.DestinationWriteRefresh
@@ -665,6 +667,20 @@ class AppContainer(private val context: Context) {
         outboxQueue.enqueuePlateUnspotted(stateCode)
         bumpTick()
         requestSync(SyncTrigger.POST_WRITE)
+    }
+
+    /**
+     * Names a checklist stop by its backend `stop_id` (ANDSET-015): queued through the
+     * outbox like journal posts so it works offline, then a post-write sync. Returns
+     * [StopNameSave.Blank] (nothing queued) for a blank name.
+     */
+    fun nameStop(stopId: String, name: String): StopNameSave {
+        val result = StopNaming.save(outboxQueue, stopId, name)
+        if (result is StopNameSave.Saved) {
+            bumpTick()
+            requestSync(SyncTrigger.POST_WRITE)
+        }
+        return result
     }
 
     fun selectProfile(profile: Profile?) {

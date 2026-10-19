@@ -358,7 +358,7 @@ fun AppShell(
                         navArgument("state") { type = NavType.StringType; nullable = true; defaultValue = null },
                     ),
                 ) { entry ->
-                    ChecklistScreen(container, entry.arguments?.getString("state"))
+                    ChecklistScreen(container, profile, entry.arguments?.getString("state"))
                 }
                 composable(
                     Routes.TRIP,

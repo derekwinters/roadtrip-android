@@ -18,7 +18,7 @@ class ChecklistStateTest {
                 ChecklistStateEntry("Iowa", "IA", TestData.ts(3600)),
             ),
             cities = listOf(ChecklistCityEntry("Des Moines", "IA", TestData.ts(4000))),
-            stops = listOf(ChecklistStopEntry(41.6, -93.6, TestData.ts(4200), 25.0, "World's Largest Truck Stop")),
+            stops = listOf(ChecklistStopEntry("stop-1", 41.6, -93.6, TestData.ts(4200), 25.0, "World's Largest Truck Stop")),
         )
 
         val screen = ChecklistReducer.fromDto(dto)
