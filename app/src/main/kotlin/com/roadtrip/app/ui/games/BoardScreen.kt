@@ -331,9 +331,10 @@ fun BoardScreen(
                 Spacer(Modifier.height(12.dp))
 
                 // Board occupies the remaining height; grid boards bound to a square that
-                // fits, hangman (a tall non-grid layout) scrolls within its own slot. Tic-tac-toe
-                // and ultimate carry a player-identity legend below (phone) / beside (tablet) the
-                // board (ANDGAME-020); other game types get an empty legend and lay out unchanged.
+                // fits, hangman (a tall non-grid layout) scrolls within its own slot. Tic-tac-toe,
+                // ultimate, chess and checkers carry a player-identity legend below (phone) /
+                // beside (tablet) the board (ANDGAME-020); hangman gets an empty legend and lays
+                // out unchanged.
                 val legend = PlayerLegend.forGame(currentGame, profile.id, profileNames)
                 BoardWithLegend(
                     legend = legend,

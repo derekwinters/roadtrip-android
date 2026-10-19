@@ -418,10 +418,11 @@ private fun SubBoard(
 }
 
 /**
- * Places a grid board and, for tic-tac-toe / ultimate, its player-identity legend (ANDGAME-020):
+ * Places a grid board and, for tic-tac-toe / ultimate / chess / checkers, its player-identity
+ * legend (ANDGAME-020):
  * the legend sits below the board on phone and beside it on tablet/wide, switched on the same
  * width threshold as the ANDGAME-012 board sizing (`PlayerLegend.placeBeside`). An empty legend
- * (other game types) just centres the board unchanged.
+ * (hangman) just centres the board unchanged.
  */
 @Composable
 fun BoardWithLegend(
@@ -462,8 +463,9 @@ fun BoardWithLegend(
 }
 
 /**
- * Player-identity legend for tic-tac-toe / ultimate boards (ANDGAME-020): each row maps a mark
- * (X/O) to a player name from the pure [com.roadtrip.core.games.PlayerLegend] seam. The on-turn
+ * Player-identity legend (ANDGAME-020): each row maps a mark (X/O) or, for chess / checkers, a
+ * colour swatch in that side's piece ink to a player name from the pure
+ * [com.roadtrip.core.games.PlayerLegend] seam. The on-turn
  * player's row is boxed with the same [activeSquareBorder] the board draws for the active square;
  * the row also names "(you)" for the viewing profile. Placement (below on phone, beside on
  * tablet) is decided by the caller — this composable just stacks the rows.
@@ -479,11 +481,16 @@ fun PlayerLegendView(entries: List<LegendEntry>, modifier: Modifier = Modifier) 
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    entry.mark.toString(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontFamily = FontFamily.Monospace,
-                )
+                val ink = entry.ink
+                if (ink != null) {
+                    LegendSwatch(ink)
+                } else {
+                    Text(
+                        entry.mark?.toString().orEmpty(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
                 Text(
                     "  —  ${entry.name}${if (entry.isYou) " (you)" else ""}",
                     style = MaterialTheme.typography.bodyMedium,
@@ -492,6 +499,31 @@ fun PlayerLegendView(entries: List<LegendEntry>, modifier: Modifier = Modifier) 
         }
     }
 }
+
+/**
+ * A legend colour swatch (ANDGAME-020): a small disc filled with the side's piece ink from the
+ * board palette, so it matches the board's pieces in light and dark themes. The white side gets
+ * the same dark outline colour its pieces use so the swatch reads on a light background.
+ */
+@Composable
+private fun LegendSwatch(ink: PieceInk) {
+    val boardColors = LocalBoardColors.current
+    val style = ink.toStyle(boardColors)
+    Box(
+        modifier = Modifier
+            .size(LEGEND_SWATCH_SIZE)
+            .then(
+                if (style.outline) {
+                    Modifier.border(1.dp, boardColors.pieceOutlineShadow, CircleShape)
+                } else {
+                    Modifier
+                },
+            )
+            .background(style.color, CircleShape),
+    )
+}
+
+private val LEGEND_SWATCH_SIZE = 18.dp
 
 /** A text mark (X/O or captured winner) sized to a fraction of its cell (ANDGAME-012). */
 @Composable
