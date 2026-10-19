@@ -21,12 +21,48 @@ data class ChecklistScreenState(
     val states: List<StateRow>,
     val cities: List<CityRow>,
     val stops: List<StopRow>,
-)
+) {
+    /**
+     * States with their cities nested by `stateCode` (ANDSET-009). A city whose state has no
+     * row gets a synthesized, not-entered group named by its code (ANDSET-010); once the
+     * crossing arrives via [ChecklistReducer.applyEvent] the real row takes its place.
+     */
+    val stateGroups: List<StateGroup>
+        get() {
+            val citiesByState = cities.groupBy { it.stateCode }
+            val known = states.map { it.stateCode }.toSet()
+            val real = states.map { StateGroup(it, citiesByState[it.stateCode].orEmpty()) }
+            val synthesized = citiesByState
+                .filterKeys { it !in known }
+                .map { (code, rows) -> StateGroup(StateRow(code, code, firstEnteredAt = null), rows) }
+            return real + synthesized
+        }
+}
+
+data class StateGroup(val state: StateRow, val cities: List<CityRow>) {
+    val cityCount: Int get() = cities.size
+}
+
+/**
+ * View-local expansion of the checklist's state groups (ANDSET-011): collapsed by default,
+ * with only the deep-linked state (ANDJRNL-004) expanded on arrival. Never persisted.
+ */
+object ChecklistExpansion {
+    fun initial(groups: List<StateGroup>, highlightStateCode: String?): Set<String> =
+        if (highlightStateCode != null && groups.any { it.state.stateCode == highlightStateCode }) {
+            setOf(highlightStateCode)
+        } else {
+            emptySet()
+        }
+
+    fun toggle(expanded: Set<String>, stateCode: String): Set<String> =
+        if (stateCode in expanded) expanded - stateCode else expanded + stateCode
+}
 
 /**
  * Checklist read model from GET /api/checklist (cached for offline); states light up with
  * their first-entered time as `location.crossing.state` events arrive on the feed
- * (ANDSET-003).
+ * (ANDSET-003), with cities nested under their state (ANDSET-009).
  */
 object ChecklistReducer {
     fun fromDto(checklist: Checklist): ChecklistScreenState = ChecklistScreenState(
