@@ -93,7 +93,7 @@ internal fun boardShadeColor(shade: BoardSquareShade?, scheme: ColorScheme, boar
 
 /** [boardShadeColor] for the current theme's colour scheme and board palette. */
 @Composable
-private fun boardShadeColor(shade: BoardSquareShade?): Color? =
+private fun currentBoardShadeColor(shade: BoardSquareShade?): Color? =
     boardShadeColor(shade, MaterialTheme.colorScheme, LocalBoardColors.current)
 
 @Composable
@@ -102,8 +102,8 @@ fun ChessBoardView(
     selectedSquare: String?,
     lastMove: LastMoveHighlight.PieceMove?,
     enabled: Boolean,
-    onSquareTap: (String) -> Unit,
     staged: StagedMoveHighlight? = null,
+    onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
         piece = { square ->
@@ -124,8 +124,8 @@ fun CheckersBoardView(
     selectedSquare: String?,
     lastMove: LastMoveHighlight.PieceMove?,
     enabled: Boolean,
-    onSquareTap: (String) -> Unit,
     staged: StagedMoveHighlight? = null,
+    onSquareTap: (String) -> Unit,
 ) {
     EightByEight(
         piece = { square ->
@@ -249,7 +249,7 @@ private fun EightByEight(
                         // Last-move (ANDGAME-024) or staged-move (ANDGAME-026) shade: a translucent
                         // overlay composited over the wood square. It sits UNDER the piece glyph
                         // and is distinct from the selected-square border above.
-                        val shadeColor = boardShadeColor(shadeAt(square))
+                        val shadeColor = currentBoardShadeColor(shadeAt(square))
                         Box(
                             modifier = Modifier
                                 .weight(1f)
