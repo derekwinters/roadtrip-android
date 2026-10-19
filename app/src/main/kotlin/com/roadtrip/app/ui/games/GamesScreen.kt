@@ -197,7 +197,7 @@ fun GamesScreen(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text("License plate bingo", style = MaterialTheme.typography.titleSmall)
                                         Text(
-                                            "Spot all 50 states + DC — works offline",
+                                            "Spot all 50 states, DC and Canada — works offline",
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )

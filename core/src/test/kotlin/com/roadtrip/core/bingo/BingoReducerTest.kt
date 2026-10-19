@@ -40,18 +40,123 @@ class BingoReducerTest {
     // ---- ANDBNG-001: the grid, filled cells, offline spots ------------------------------
 
     @Test
-    fun `the grid covers the fifty states plus DC from the static list ANDBNG-001`() {
-        assertEquals(51, UsStates.ALL.size)
-        assertEquals(51, UsStates.ALL.map { it.code }.toSet().size)
-        assertEquals("District of Columbia", UsStates.byCode.getValue("DC").name)
-        assertEquals("Colorado", UsStates.byCode.getValue("CO").name)
-        assertTrue(UsStates.byCode.containsKey("AK") && UsStates.byCode.containsKey("HI"))
+    fun `the grid covers the fifty states plus DC then Canada from one static list ANDBNG-001`() {
+        assertEquals(64, PlateRegions.ALL.size)
+        assertEquals(64, PlateRegions.ALL.map { it.code }.toSet().size)
+        assertEquals("District of Columbia", PlateRegions.byCode.getValue("DC").name)
+        assertEquals("Colorado", PlateRegions.byCode.getValue("CO").name)
+        assertTrue(PlateRegions.byCode.containsKey("AK") && PlateRegions.byCode.containsKey("HI"))
 
         val state = BingoReducer.reduce(BingoCard(), emptyList(), TestData.kid, profilesById)
-        assertEquals(51, state.cells.size)
-        assertEquals(UsStates.ALL.map { it.code }, state.cells.map { it.stateCode })
+        assertEquals(64, state.cells.size)
+        assertEquals(PlateRegions.ALL.map { it.code }, state.cells.map { it.stateCode })
         // Any profile can spot any empty cell — spotting is never parent-gated.
         assertTrue(state.cells.all { !it.spotted && it.canSpot })
+    }
+
+    @Test
+    fun `the grid is a United States section then a Canada section each alphabetical ANDBNG-001`() {
+        val state = BingoReducer.reduce(BingoCard(), emptyList(), TestData.kid, profilesById)
+
+        assertEquals(listOf("United States", "Canada"), state.sections.map { it.title })
+        val (us, canada) = state.sections
+        assertEquals(51, us.cells.size)
+        assertEquals(13, canada.cells.size)
+        assertEquals(us.cells.map { it.regionName }.sorted(), us.cells.map { it.regionName })
+        assertEquals(canada.cells.map { it.regionName }.sorted(), canada.cells.map { it.regionName })
+        // The flat cell list is the two sections concatenated, US first.
+        assertEquals(us.cells + canada.cells, state.cells)
+        assertTrue(us.cells.all { it.section == "United States" })
+        assertTrue(canada.cells.all { it.section == "Canada" })
+    }
+
+    @Test
+    fun `all thirteen provinces and territories are on the card with full names ANDBNG-001`() {
+        val expected = mapOf(
+            "AB" to "Alberta",
+            "BC" to "British Columbia",
+            "MB" to "Manitoba",
+            "NB" to "New Brunswick",
+            "NL" to "Newfoundland and Labrador",
+            "NS" to "Nova Scotia",
+            "NT" to "Northwest Territories",
+            "NU" to "Nunavut",
+            "ON" to "Ontario",
+            "PE" to "Prince Edward Island",
+            "QC" to "Quebec",
+            "SK" to "Saskatchewan",
+            "YT" to "Yukon",
+        )
+        val state = BingoReducer.reduce(BingoCard(), emptyList(), TestData.kid, profilesById)
+        val canada = state.sections.single { it.title == "Canada" }.cells
+
+        assertEquals(expected, canada.associate { it.stateCode to it.regionName })
+        expected.forEach { (code, name) -> assertEquals(name, PlateRegions.byCode.getValue(code).name) }
+    }
+
+    @Test
+    fun `a province can be spotted shows its name and is removed by spotter or parent ANDBNG-001 ANDBNG-002`() {
+        clock.current = TestData.t(120)
+        queue.enqueuePlateSpotted("BC")
+        val pendingState = BingoReducer.reduce(BingoCard(), store.pending(), TestData.kid, profilesById)
+        val pendingBc = pendingState.cells.single { it.stateCode == "BC" }
+        assertTrue(pendingBc.spotted)
+        assertTrue(pendingBc.pending)
+        assertEquals("British Columbia", pendingBc.regionName)
+        assertEquals(TestData.t(120), pendingBc.spottedAt)
+
+        val card = BingoCard(cells = listOf(cell("BC", TestData.kid.id, 120)), counts = mapOf(TestData.kid.id to 1))
+        fun bcFor(self: com.roadtrip.core.api.Profile) =
+            BingoReducer.reduce(card, emptyList(), self, profilesById).cells.single { it.stateCode == "BC" }
+        assertEquals("British Columbia", bcFor(TestData.otherKid).regionName)
+        assertTrue(bcFor(TestData.kid).canRemove)
+        assertTrue(bcFor(TestData.parent).canRemove)
+        assertFalse(bcFor(TestData.otherKid).canRemove)
+    }
+
+    @Test
+    fun `a log row for a province code shows its full name ANDBNG-003`() {
+        val card = BingoCard(
+            log = listOf(BingoLogEntry("QC", BingoLogAction.SPOTTED, TestData.kid.id, TestData.ts(100))),
+        )
+        val row = BingoReducer.reduce(card, emptyList(), TestData.kid, profilesById).log.single()
+        assertEquals("QC", row.stateCode)
+        assertEquals("Quebec", row.regionName)
+    }
+
+    @Test
+    fun `a mixed US and Canada card reduces with pending entries and live events ANDBNG-001 ANDBNG-004`() {
+        var card = BingoCard(
+            cells = listOf(cell("CO", TestData.kid.id, 10), cell("ON", TestData.parent.id, 20)),
+            counts = mapOf(TestData.kid.id to 1, TestData.parent.id to 1),
+        )
+        // Live feed: a province spot from another profile folds in without a reload.
+        card = BingoReducer.applyEvent(card, TestData.plateSpottedEvent(30, "YT", TestData.otherKid.id), profilesById)
+        // Live removal of a province by a non-spotter kid is not honored.
+        card = BingoReducer.applyEvent(card, TestData.plateUnspottedEvent(31, "ON", TestData.otherKid.id), profilesById)
+        assertTrue(card.cells.any { it.stateCode == "ON" })
+
+        // Pending offline ops mix a US state and a province.
+        clock.current = TestData.t(40)
+        queue.enqueuePlateSpotted("NL")
+        queue.enqueuePlateUnspotted("CO")
+
+        val state = BingoReducer.reduce(card, store.pending(), TestData.kid, profilesById)
+        fun c(code: String) = state.cells.single { it.stateCode == code }
+        assertEquals("Ontario", c("ON").regionName)
+        assertEquals("Derek", c("ON").spottedByName)
+        assertEquals("Theo", c("YT").spottedByName)
+        assertTrue(c("NL").spotted && c("NL").pending)
+        assertTrue(!c("CO").spotted && c("CO").pending)
+        assertEquals(
+            listOf("ON", "YT", "NL").toSet(),
+            state.sections.single { it.title == "Canada" }.cells.filter { it.spotted }.map { it.stateCode }.toSet(),
+        )
+        assertTrue(state.sections.single { it.title == "United States" }.cells.none { it.spotted })
+        assertEquals(
+            listOf("Derek" to 1, "Maya" to 1, "Theo" to 1),
+            state.standings.map { it.profileName to it.count },
+        )
     }
 
     @Test
@@ -65,7 +170,7 @@ class BingoReducerTest {
         val co = state.cells.single { it.stateCode == "CO" }
 
         assertTrue(co.spotted)
-        assertEquals("Colorado", co.stateName)
+        assertEquals("Colorado", co.regionName)
         assertEquals(TestData.kid.id, co.spottedById)
         assertEquals("Maya", co.spottedByName)
         assertEquals(TestData.t(60), co.spottedAt)
@@ -94,7 +199,7 @@ class BingoReducerTest {
         assertEquals("Maya", ks.spottedByName)
         assertEquals(TestData.t(300), ks.spottedAt)
 
-        // Only real states + DC exist on the card.
+        // Only listed plate regions exist on the card.
         assertFailsWith<IllegalArgumentException> { queue.enqueuePlateSpotted("XX") }
     }
 
@@ -157,7 +262,7 @@ class BingoReducerTest {
         )
         assertEquals(listOf("Maya", "Theo", "Derek"), log.map { it.profileName })
         assertEquals(listOf(TestData.t(100), TestData.t(200), TestData.t(500)), log.map { it.ts })
-        assertEquals("Utah", log.last().stateName)
+        assertEquals("Utah", log.last().regionName)
     }
 
     // ---- ANDBNG-004: live feed fold, leaderboard, per-trip scope, read-only history ------

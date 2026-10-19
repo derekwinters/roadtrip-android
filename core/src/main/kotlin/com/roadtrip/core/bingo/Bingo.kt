@@ -13,71 +13,99 @@ import java.time.Instant
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
-data class UsState(val code: String, val name: String)
+/** A spottable plate region; [section] is the grid section header it renders under. */
+data class PlateRegion(val code: String, val name: String, val section: String)
 
-/** The static 50-states-plus-DC grid source (docs/spec/10-bingo.md, ANDBNG-001). */
-object UsStates {
-    val ALL: List<UsState> = listOf(
-        UsState("AL", "Alabama"),
-        UsState("AK", "Alaska"),
-        UsState("AZ", "Arizona"),
-        UsState("AR", "Arkansas"),
-        UsState("CA", "California"),
-        UsState("CO", "Colorado"),
-        UsState("CT", "Connecticut"),
-        UsState("DE", "Delaware"),
-        UsState("DC", "District of Columbia"),
-        UsState("FL", "Florida"),
-        UsState("GA", "Georgia"),
-        UsState("HI", "Hawaii"),
-        UsState("ID", "Idaho"),
-        UsState("IL", "Illinois"),
-        UsState("IN", "Indiana"),
-        UsState("IA", "Iowa"),
-        UsState("KS", "Kansas"),
-        UsState("KY", "Kentucky"),
-        UsState("LA", "Louisiana"),
-        UsState("ME", "Maine"),
-        UsState("MD", "Maryland"),
-        UsState("MA", "Massachusetts"),
-        UsState("MI", "Michigan"),
-        UsState("MN", "Minnesota"),
-        UsState("MS", "Mississippi"),
-        UsState("MO", "Missouri"),
-        UsState("MT", "Montana"),
-        UsState("NE", "Nebraska"),
-        UsState("NV", "Nevada"),
-        UsState("NH", "New Hampshire"),
-        UsState("NJ", "New Jersey"),
-        UsState("NM", "New Mexico"),
-        UsState("NY", "New York"),
-        UsState("NC", "North Carolina"),
-        UsState("ND", "North Dakota"),
-        UsState("OH", "Ohio"),
-        UsState("OK", "Oklahoma"),
-        UsState("OR", "Oregon"),
-        UsState("PA", "Pennsylvania"),
-        UsState("RI", "Rhode Island"),
-        UsState("SC", "South Carolina"),
-        UsState("SD", "South Dakota"),
-        UsState("TN", "Tennessee"),
-        UsState("TX", "Texas"),
-        UsState("UT", "Utah"),
-        UsState("VT", "Vermont"),
-        UsState("VA", "Virginia"),
-        UsState("WA", "Washington"),
-        UsState("WV", "West Virginia"),
-        UsState("WI", "Wisconsin"),
-        UsState("WY", "Wyoming"),
+/**
+ * The static plate-region grid source (docs/spec/10-bingo.md, ANDBNG-001): the United
+ * States section (50 states + DC) then the Canada section (10 provinces + 3 territories),
+ * each alphabetical by name. Invariant: section order and the code list live only here —
+ * nothing branches on country; a region's section is plain data.
+ */
+object PlateRegions {
+    const val UNITED_STATES = "United States"
+    const val CANADA = "Canada"
+
+    private fun us(code: String, name: String) = PlateRegion(code, name, UNITED_STATES)
+    private fun ca(code: String, name: String) = PlateRegion(code, name, CANADA)
+
+    val ALL: List<PlateRegion> = listOf(
+        us("AL", "Alabama"),
+        us("AK", "Alaska"),
+        us("AZ", "Arizona"),
+        us("AR", "Arkansas"),
+        us("CA", "California"),
+        us("CO", "Colorado"),
+        us("CT", "Connecticut"),
+        us("DE", "Delaware"),
+        us("DC", "District of Columbia"),
+        us("FL", "Florida"),
+        us("GA", "Georgia"),
+        us("HI", "Hawaii"),
+        us("ID", "Idaho"),
+        us("IL", "Illinois"),
+        us("IN", "Indiana"),
+        us("IA", "Iowa"),
+        us("KS", "Kansas"),
+        us("KY", "Kentucky"),
+        us("LA", "Louisiana"),
+        us("ME", "Maine"),
+        us("MD", "Maryland"),
+        us("MA", "Massachusetts"),
+        us("MI", "Michigan"),
+        us("MN", "Minnesota"),
+        us("MS", "Mississippi"),
+        us("MO", "Missouri"),
+        us("MT", "Montana"),
+        us("NE", "Nebraska"),
+        us("NV", "Nevada"),
+        us("NH", "New Hampshire"),
+        us("NJ", "New Jersey"),
+        us("NM", "New Mexico"),
+        us("NY", "New York"),
+        us("NC", "North Carolina"),
+        us("ND", "North Dakota"),
+        us("OH", "Ohio"),
+        us("OK", "Oklahoma"),
+        us("OR", "Oregon"),
+        us("PA", "Pennsylvania"),
+        us("RI", "Rhode Island"),
+        us("SC", "South Carolina"),
+        us("SD", "South Dakota"),
+        us("TN", "Tennessee"),
+        us("TX", "Texas"),
+        us("UT", "Utah"),
+        us("VT", "Vermont"),
+        us("VA", "Virginia"),
+        us("WA", "Washington"),
+        us("WV", "West Virginia"),
+        us("WI", "Wisconsin"),
+        us("WY", "Wyoming"),
+        ca("AB", "Alberta"),
+        ca("BC", "British Columbia"),
+        ca("MB", "Manitoba"),
+        ca("NB", "New Brunswick"),
+        ca("NL", "Newfoundland and Labrador"),
+        ca("NT", "Northwest Territories"),
+        ca("NS", "Nova Scotia"),
+        ca("NU", "Nunavut"),
+        ca("ON", "Ontario"),
+        ca("PE", "Prince Edward Island"),
+        ca("QC", "Quebec"),
+        ca("SK", "Saskatchewan"),
+        ca("YT", "Yukon"),
     )
 
-    val byCode: Map<String, UsState> = ALL.associateBy { it.code }
+    val byCode: Map<String, PlateRegion> = ALL.associateBy { it.code }
 }
 
 /** One grid cell, ready to render (ANDBNG-001/002). */
 data class BingoCellView(
+    /** The region's code — named after the `state_code` wire field it mirrors. */
     val stateCode: String,
-    val stateName: String,
+    val regionName: String,
+    /** The grid section this cell renders under (ANDBNG-001). */
+    val section: String,
     val spottedById: String?,
     val spottedByName: String?,
     val spottedAt: Instant?,
@@ -94,7 +122,7 @@ data class BingoCellView(
 /** One chronological history line (ANDBNG-003). */
 data class BingoLogRow(
     val stateCode: String,
-    val stateName: String,
+    val regionName: String,
     val action: BingoLogAction,
     val profileId: String,
     val profileName: String,
@@ -108,12 +136,20 @@ data class BingoStanding(
     val count: Int,
 )
 
+/** One titled grid section, in [PlateRegions.ALL] order (ANDBNG-001). */
+data class BingoSection(val title: String, val cells: List<BingoCellView>)
+
 data class BingoScreenState(
+    /** Every cell in [PlateRegions.ALL] order — the sections concatenated. */
     val cells: List<BingoCellView>,
     val log: List<BingoLogRow>,
     val standings: List<BingoStanding>,
     val readOnly: Boolean,
-)
+) {
+    /** The cells grouped under their section headers, in list order (ANDBNG-001). */
+    val sections: List<BingoSection>
+        get() = cells.groupBy { it.section }.map { (title, sectionCells) -> BingoSection(title, sectionCells) }
+}
 
 /**
  * Folds the server card, the local pending outbox spots/removals, and live `plate.*`
@@ -163,15 +199,16 @@ object BingoReducer {
             }
         }
 
-        val views = UsStates.ALL.map { state ->
-            val cell = cells[state.code]
+        val views = PlateRegions.ALL.map { region ->
+            val cell = cells[region.code]
             BingoCellView(
-                stateCode = state.code,
-                stateName = state.name,
+                stateCode = region.code,
+                regionName = region.name,
+                section = region.section,
                 spottedById = cell?.spottedBy,
                 spottedByName = cell?.spottedBy?.let(::nameOf),
                 spottedAt = cell?.spottedAt?.let(Timestamps::parse),
-                pending = state.code in pendingCodes,
+                pending = region.code in pendingCodes,
                 canSpot = !readOnly && cell == null,
                 canRemove = !readOnly && cell != null && canRemove(cell, selfProfile),
             )
@@ -181,7 +218,7 @@ object BingoReducer {
             .map { entry ->
                 BingoLogRow(
                     stateCode = entry.stateCode,
-                    stateName = UsStates.byCode[entry.stateCode]?.name ?: entry.stateCode,
+                    regionName = PlateRegions.byCode[entry.stateCode]?.name ?: entry.stateCode,
                     action = entry.action,
                     profileId = entry.profileId,
                     profileName = nameOf(entry.profileId),
