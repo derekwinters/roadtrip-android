@@ -5,9 +5,10 @@ import com.roadtrip.core.api.GameStatus
 import com.roadtrip.core.api.GameType
 
 /**
- * One row of the mark-to-player legend for tic-tac-toe / ultimate boards (ANDGAME-020).
+ * One row of the player-identity legend (ANDGAME-020). A row is identified EITHER by a [mark]
+ * (tic-tac-toe / ultimate) OR by an [ink] colour swatch (chess / checkers) — exactly one is set.
  *
- * @param mark      the board glyph this row identifies — 'X' or 'O'.
+ * @param mark      the board glyph this row identifies — 'X' or 'O'; null for colour rows.
  * @param playerId  the resolved profile id, or null when there is no such player yet
  *                  (e.g. an open game with no opponent).
  * @param name      the display name from the profiles cache, degrading to the neutral
@@ -15,21 +16,25 @@ import com.roadtrip.core.api.GameType
  * @param isYou     whether this mark belongs to the viewing profile.
  * @param isTurn    whether it is currently this player's turn (active game && `Game.turn`
  *                  matches) — the view boxes this row like an active board square.
+ * @param ink       the side's piece ink, drawn as a swatch; null for mark rows.
  */
 data class LegendEntry(
-    val mark: Char,
+    val mark: Char?,
     val playerId: String?,
     val name: String,
     val isYou: Boolean,
     val isTurn: Boolean,
+    val ink: PieceInk? = null,
 )
 
 /**
- * Pure mapping of a game's marks to player identities so the tic-tac-toe / ultimate boards can
- * show a persistent "which mark am I" legend with a turn highlight (ANDGAME-020). X is always
- * the creator (first player); O is the opponent, matching the deterministic move-index
- * alternation in [ReplayEngine] `symbolFor`. Resolution and fallback mirror [GameLobbyLabeler]
- * so names read consistently with the lobby.
+ * Pure mapping of a game's sides to player identities so the boards can show a persistent
+ * "which side am I" legend with a turn highlight (ANDGAME-020). The creator always plays the
+ * first-moving side: X (matching the move-index alternation in [ReplayEngine] `symbolFor`),
+ * chess white, checkers red; the opponent plays O / black / black. Swatch inks come from the
+ * same [BoardPieces] mapping that colours the pieces, so the legend cannot disagree with the
+ * board. Resolution and fallback mirror [GameLobbyLabeler] so names read consistently with the
+ * lobby. Hangman has no two-sided turn and gets no legend.
  */
 object PlayerLegend {
     /**
@@ -42,22 +47,35 @@ object PlayerLegend {
     fun placeBeside(availableWidthDp: Int): Boolean = availableWidthDp >= BESIDE_MIN_WIDTH_DP
 
     /**
-     * The X/O legend for [game], or an empty list for game types with no X/O marks (chess,
-     * checkers, hangman). `names` is a `profileId -> display name` map read from the profiles
-     * cache; an uncached or absent player degrades to [GameLobbyLabeler.UNKNOWN_PLAYER].
+     * The legend for [game]: X/O rows for tic-tac-toe / ultimate, colour rows for chess /
+     * checkers, and an empty list for hangman. `names` is a `profileId -> display name` map read
+     * from the profiles cache; an uncached or absent player degrades to
+     * [GameLobbyLabeler.UNKNOWN_PLAYER].
      */
-    fun forGame(game: Game, myProfileId: String, names: Map<String, String>): List<LegendEntry> {
-        if (game.gameType != GameType.TICTACTOE && game.gameType != GameType.ULTIMATE) {
-            return emptyList()
+    fun forGame(game: Game, myProfileId: String, names: Map<String, String>): List<LegendEntry> =
+        when (game.gameType) {
+            GameType.TICTACTOE, GameType.ULTIMATE -> listOf(
+                entry(game.createdBy, myProfileId, names, game).copy(mark = 'X'),
+                entry(game.opponentId, myProfileId, names, game).copy(mark = 'O'),
+            )
+            GameType.CHESS -> listOf(
+                entry(game.createdBy, myProfileId, names, game).copy(ink = BoardPieces.chessInk(CHESS_WHITE)),
+                entry(game.opponentId, myProfileId, names, game).copy(ink = BoardPieces.chessInk(CHESS_BLACK)),
+            )
+            GameType.CHECKERS -> listOf(
+                entry(game.createdBy, myProfileId, names, game).copy(ink = BoardPieces.checkersInk(CHECKERS_RED)),
+                entry(game.opponentId, myProfileId, names, game).copy(ink = BoardPieces.checkersInk(CHECKERS_BLACK)),
+            )
+            GameType.HANGMAN -> emptyList()
         }
-        return listOf(
-            entry('X', game.createdBy, myProfileId, names, game),
-            entry('O', game.opponentId, myProfileId, names, game),
-        )
-    }
+
+    // Piece codes whose ink identifies each side (ANDGAME-013 codes; see BoardPieces).
+    private const val CHESS_WHITE = "w"
+    private const val CHESS_BLACK = "b"
+    private const val CHECKERS_RED = "r"
+    private const val CHECKERS_BLACK = "w"
 
     private fun entry(
-        mark: Char,
         playerId: String?,
         myProfileId: String,
         names: Map<String, String>,
@@ -66,7 +84,7 @@ object PlayerLegend {
         val name = playerId?.let { names[it] }?.takeIf { it.isNotBlank() }
             ?: GameLobbyLabeler.UNKNOWN_PLAYER
         return LegendEntry(
-            mark = mark,
+            mark = null,
             playerId = playerId,
             name = name,
             isYou = playerId != null && playerId == myProfileId,

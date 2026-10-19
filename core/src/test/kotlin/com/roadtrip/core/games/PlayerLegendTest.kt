@@ -114,15 +114,141 @@ class PlayerLegendTest {
     }
 
     @Test
-    fun `non-mark game types produce no legend ANDGAME-020`() {
-        for (type in listOf(GameType.CHESS, GameType.CHECKERS, GameType.HANGMAN)) {
-            val game = TestData.game(
+    fun `hangman produces no legend ANDGAME-020`() {
+        val game = TestData.game(
+            type = GameType.HANGMAN,
+            createdBy = derek,
+            opponentId = theo,
+            status = GameStatus.ACTIVE,
+        )
+        assertTrue(PlayerLegend.forGame(game, me, names).isEmpty())
+    }
+
+    @Test
+    fun `chess maps white to the creator and black to the opponent ANDGAME-020`() {
+        val game = TestData.game(
+            type = GameType.CHESS,
+            createdBy = derek,
+            opponentId = theo,
+            status = GameStatus.ACTIVE,
+        )
+        val legend = PlayerLegend.forGame(game, me, names)
+        assertEquals(2, legend.size)
+        assertEquals(PieceInk.WHITE_OUTLINED, legend[0].ink)
+        assertEquals(derek, legend[0].playerId)
+        assertEquals("Dad", legend[0].name)
+        assertEquals(PieceInk.BLACK, legend[1].ink)
+        assertEquals(theo, legend[1].playerId)
+        assertEquals("Kid", legend[1].name)
+        // Colour rows carry no X/O mark.
+        assertEquals(listOf<Char?>(null, null), legend.map { it.mark })
+    }
+
+    @Test
+    fun `checkers maps red to the creator and black to the opponent ANDGAME-020`() {
+        val game = TestData.game(
+            type = GameType.CHECKERS,
+            createdBy = derek,
+            opponentId = theo,
+            status = GameStatus.ACTIVE,
+        )
+        val legend = PlayerLegend.forGame(game, me, names)
+        assertEquals(2, legend.size)
+        assertEquals(PieceInk.RED, legend[0].ink)
+        assertEquals(derek, legend[0].playerId)
+        assertEquals(PieceInk.BLACK, legend[1].ink)
+        assertEquals(theo, legend[1].playerId)
+        assertEquals(listOf<Char?>(null, null), legend.map { it.mark })
+    }
+
+    @Test
+    fun `colour swatches use the same ink as the board's pieces ANDGAME-020`() {
+        val chess = PlayerLegend.forGame(
+            TestData.game(type = GameType.CHESS, createdBy = derek, opponentId = theo, status = GameStatus.ACTIVE),
+            me,
+            names,
+        )
+        assertEquals(BoardPieces.chessInk("wK"), chess[0].ink)
+        assertEquals(BoardPieces.chessInk("bK"), chess[1].ink)
+
+        val checkers = PlayerLegend.forGame(
+            TestData.game(type = GameType.CHECKERS, createdBy = derek, opponentId = theo, status = GameStatus.ACTIVE),
+            me,
+            names,
+        )
+        assertEquals(BoardPieces.checkersInk("r"), checkers[0].ink)
+        assertEquals(BoardPieces.checkersInk("w"), checkers[1].ink)
+    }
+
+    @Test
+    fun `mark rows carry no colour swatch ANDGAME-020`() {
+        val game = TestData.game(
+            type = GameType.TICTACTOE,
+            createdBy = derek,
+            opponentId = theo,
+            status = GameStatus.ACTIVE,
+        )
+        assertEquals(listOf<PieceInk?>(null, null), PlayerLegend.forGame(game, me, names).map { it.ink })
+    }
+
+    @Test
+    fun `isYou resolves on either side of a chess or checkers game ANDGAME-020`() {
+        for (type in listOf(GameType.CHESS, GameType.CHECKERS)) {
+            val meCreator = PlayerLegend.forGame(
+                TestData.game(type = type, createdBy = me, opponentId = theo, status = GameStatus.ACTIVE),
+                me,
+                names,
+            )
+            assertTrue(meCreator[0].isYou, "creator row should be me for $type")
+            assertFalse(meCreator[1].isYou, "opponent row should not be me for $type")
+
+            val meOpponent = PlayerLegend.forGame(
+                TestData.game(type = type, createdBy = derek, opponentId = me, status = GameStatus.ACTIVE),
+                me,
+                names,
+            )
+            assertFalse(meOpponent[0].isYou, "creator row should not be me for $type")
+            assertTrue(meOpponent[1].isYou, "opponent row should be me for $type")
+        }
+    }
+
+    @Test
+    fun `isTurn on chess and checkers follows Game turn only while active ANDGAME-020`() {
+        for (type in listOf(GameType.CHESS, GameType.CHECKERS)) {
+            val base = TestData.game(type = type, createdBy = derek, opponentId = theo, status = GameStatus.ACTIVE)
+
+            val creatorTurn = PlayerLegend.forGame(base.copy(turn = derek), me, names)
+            assertEquals(listOf(true, false), creatorTurn.map { it.isTurn }, "creator's turn, $type")
+
+            val opponentTurn = PlayerLegend.forGame(base.copy(turn = theo), me, names)
+            assertEquals(listOf(false, true), opponentTurn.map { it.isTurn }, "opponent's turn, $type")
+
+            val finished = PlayerLegend.forGame(
+                base.copy(turn = derek, status = GameStatus.FINISHED), me, names,
+            )
+            assertEquals(listOf(false, false), finished.map { it.isTurn }, "finished, $type")
+        }
+    }
+
+    @Test
+    fun `chess and checkers with no opponent yet show Someone and no turn ANDGAME-020`() {
+        for (type in listOf(GameType.CHESS, GameType.CHECKERS)) {
+            val open = TestData.game(type = type, createdBy = derek, opponentId = null, status = GameStatus.OPEN)
+            val legend = PlayerLegend.forGame(open.copy(turn = derek), me, names)
+            assertEquals(2, legend.size, "two rows even when open, $type")
+            assertEquals(null, legend[1].playerId)
+            assertEquals(GameLobbyLabeler.UNKNOWN_PLAYER, legend[1].name)
+            assertEquals(listOf(false, false), legend.map { it.isTurn }, "open game has no turn, $type")
+
+            val uncached = TestData.game(
                 type = type,
-                createdBy = derek,
+                createdBy = "p-ghost",
                 opponentId = theo,
                 status = GameStatus.ACTIVE,
             )
-            assertTrue(PlayerLegend.forGame(game, me, names).isEmpty(), "expected empty for $type")
+            val ghost = PlayerLegend.forGame(uncached, me, names)
+            assertEquals(GameLobbyLabeler.UNKNOWN_PLAYER, ghost[0].name)
+            assertFalse(ghost[0].name.contains("p-ghost"))
         }
     }
 
