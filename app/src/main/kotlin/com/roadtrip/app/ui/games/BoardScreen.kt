@@ -31,12 +31,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.roadtrip.app.di.AppContainer
 import com.roadtrip.app.ui.common.OfflineBanner
+import com.roadtrip.core.api.EventDto
 import com.roadtrip.core.api.Game
 import com.roadtrip.core.api.GameStatus
 import com.roadtrip.core.api.GameType
 import com.roadtrip.core.api.Profile
 import com.roadtrip.core.common.SystemClock
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.CheckersContinuation
 import com.roadtrip.core.games.ConfirmMovePreference
 import com.roadtrip.core.games.EndControl
 import com.roadtrip.core.games.GameEndControls
@@ -45,10 +47,12 @@ import com.roadtrip.core.games.GameStreamFollower
 import com.roadtrip.core.games.HangmanBoardStatus
 import com.roadtrip.core.games.HangmanView
 import com.roadtrip.core.games.LastMoveHighlight
+import com.roadtrip.core.games.LiveGameFold
 import com.roadtrip.core.games.LobbyReducer
 import com.roadtrip.core.games.hangmanBoardStatus
 import com.roadtrip.core.games.MoveSubmitter
 import com.roadtrip.core.games.MoveOutcome
+import com.roadtrip.core.games.PieceTap
 import com.roadtrip.core.games.PlayerLegend
 import com.roadtrip.core.games.ReplayEngine
 import com.roadtrip.core.games.ReplaySession
@@ -110,6 +114,8 @@ fun BoardScreen(
 
     val sessionHolder = remember { mutableStateOf<ReplaySession?>(null) }
     val followerHolder = remember { mutableStateOf<GameStreamFollower?>(null) }
+    // Checkers events wait here for the re-fetched game before they touch the turn (ANDGAME-027).
+    val pendingEvents = remember { mutableListOf<EventDto>() }
 
     // Load the game, its recorded moves, and start following the stream.
     LaunchedEffect(gameId) {
@@ -154,7 +160,12 @@ fun BoardScreen(
                     gameId = gameId,
                     onEvent = { event ->
                         session.applyGameEvent(event)
-                        game = game?.let { LobbyReducer.applyEvent(listOf(it), event).firstOrNull() }
+                        val current = game
+                        if (current != null && LiveGameFold.refetchesAfterEvents(current.gameType)) {
+                            pendingEvents += event
+                        } else {
+                            game = current?.let { LobbyReducer.applyEvent(listOf(it), event).firstOrNull() }
+                        }
                         boardVersion++
                     },
                     startAfter = cursor,
@@ -182,6 +193,20 @@ fun BoardScreen(
                         boardVersion++
                     }
                 }
+                // Checkers: the turn after a capture is the server's (a multi-jump keeps it with
+                // the jumper), so fold the batch with the re-fetched game (ANDGAME-027). A failed
+                // re-fetch folds without it (provisional alternation, stale view dropped).
+                val current = game
+                if (pendingEvents.isNotEmpty() && current != null) {
+                    val batch = pendingEvents.toList()
+                    pendingEvents.clear()
+                    val refreshed = withContext(Dispatchers.IO) {
+                        runCatching { container.api.getGame(gameId) }.getOrNull()
+                    }
+                    // Fold onto the latest game: a move response may have landed meanwhile.
+                    game = LiveGameFold.foldBatch(game ?: current, batch, refreshed)
+                    boardVersion++
+                }
             } catch (e: Exception) {
                 delay(3_000)
             }
@@ -199,6 +224,10 @@ fun BoardScreen(
     // While a move is staged for confirmation the board is inert so a second move can't be started
     // before the first is confirmed or cancelled (ANDGAME-022).
     val canInteract = canMove && stagedMove == null
+    // Checkers multi-jump (ANDGAME-027): the piece that must keep jumping, read from the server
+    // view; it stays selected and every other tap is the next hop from it.
+    val forcedFrom = CheckersContinuation.forcedFrom(currentGame, profile.id)
+    val shownSelection = CheckersContinuation.selection(selectedSquare, forcedFrom)
 
     // Hangman is driven by the backend's viewer-aware `view` (ANDGAME-016): the word is
     // redacted in the events feed for ongoing games, so it cannot be re-folded locally like
@@ -274,19 +303,14 @@ fun BoardScreen(
     }
 
     fun tapSquare(square: String, occupied: Boolean) {
-        val from = selectedSquare
-        when {
-            from == null -> if (occupied) selectedSquare = square
-            from == square -> selectedSquare = null
-            else -> {
-                val move = buildJsonObject {
-                    put("from", from)
-                    put("to", square)
-                }
+        when (val tap = CheckersContinuation.tap(selectedSquare, square, occupied, forcedFrom)) {
+            is PieceTap.Select -> selectedSquare = tap.square
+            is PieceTap.Move -> {
                 // ANDGAME-026: the origin stays selected while the move waits for Confirm, and
-                // clears when it submits at once.
-                selectedSquare = StagedMove.selectionAfterRequest(from, confirmMoves)
-                requestMove(move)
+                // clears when it submits at once. During a multi-jump the forced piece stays
+                // selected regardless (ANDGAME-027).
+                selectedSquare = StagedMove.selectionAfterRequest(tap.from, confirmMoves)
+                requestMove(tap.json())
             }
         }
     }
@@ -309,7 +333,8 @@ fun BoardScreen(
             else -> {
                 Text(gameTypeLabel(currentGame.gameType), style = MaterialTheme.typography.titleLarge)
                 Text(
-                    statusLine(currentGame, isParticipant, myTurn, profile.id),
+                    CheckersContinuation.status(currentGame, profile.id)
+                        ?: statusLine(currentGame, isParticipant, myTurn, profile.id),
                     style = MaterialTheme.typography.bodyMedium,
                 )
 
@@ -354,7 +379,7 @@ fun BoardScreen(
                     when (board) {
                         is BoardState.ChessBoard -> ChessBoardView(
                             board = board,
-                            selectedSquare = selectedSquare,
+                            selectedSquare = shownSelection,
                             lastMove = lastMove as? LastMoveHighlight.PieceMove,
                             enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
@@ -362,7 +387,7 @@ fun BoardScreen(
                         )
                         is BoardState.CheckersBoard -> CheckersBoardView(
                             board = board,
-                            selectedSquare = selectedSquare,
+                            selectedSquare = shownSelection,
                             lastMove = lastMove as? LastMoveHighlight.PieceMove,
                             enabled = canInteract,
                             onSquareTap = { square -> tapSquare(square, board.squares.containsKey(square)) },
