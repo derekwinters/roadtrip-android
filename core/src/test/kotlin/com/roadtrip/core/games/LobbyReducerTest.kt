@@ -7,6 +7,7 @@ import com.roadtrip.core.testing.TestData
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -168,5 +169,113 @@ class LobbyReducerTest {
             ),
         ).single()
         assertEquals(opponent, afterMove.turn)
+    }
+}
+
+class CheckersContinuationTurnTest {
+    private val creator = TestData.parent.id
+    private val opponent = TestData.kid.id
+
+    private val active = TestData.game(
+        id = "c1", type = GameType.CHECKERS, mode = GameMode.OPEN, status = GameStatus.ACTIVE,
+        createdBy = creator, opponentId = opponent, turn = creator,
+    )
+
+    private fun jump(seq: Long, moveNo: Int, from: String, to: String, captured: String?, actor: String) =
+        TestData.gameMoveEvent(
+            seq = seq, gameId = "c1", moveNo = moveNo,
+            move = buildJsonObject {
+                put("from", from)
+                put("to", to)
+                if (captured != null) put("captured", captured)
+            },
+            actorId = actor,
+        )
+
+    /** The authoritative game the server returns after a move. */
+    private fun server(turn: String, mustContinueFrom: Pair<Int, Int>?, moveCount: Int) =
+        active.copy(turn = turn, moveCount = moveCount, view = CheckersContinuationTest.checkersView(mustContinueFrom, turn))
+
+    @Test
+    fun `a move that leaves a continuation keeps the turn with the actor ANDGAME-027`() {
+        val after = LobbyReducer.applyEvent(
+            listOf(active),
+            jump(1, 1, "c3", "e5", "d4", creator),
+            authoritative = server(creator, 4 to 4, 1),
+        ).single()
+        assertEquals(creator, after.turn)
+        assertEquals("e5", CheckersContinuation.square(after))
+    }
+
+    @Test
+    fun `a two-jump chain passes the turn only when the chain ends ANDGAME-027`() {
+        val leg1 = LobbyReducer.applyEvent(
+            listOf(active), jump(1, 1, "c3", "e5", "d4", creator), authoritative = server(creator, 4 to 4, 1),
+        )
+        assertEquals(creator, leg1.single().turn)
+        assertEquals("e5", CheckersContinuation.square(leg1.single()))
+
+        val leg2 = LobbyReducer.applyEvent(
+            leg1, jump(2, 2, "e5", "g7", "f6", creator), authoritative = server(opponent, null, 2),
+        ).single()
+        assertEquals(opponent, leg2.turn)
+        assertEquals(2, leg2.moveCount)
+        assertNull(CheckersContinuation.square(leg2))
+    }
+
+    @Test
+    fun `a non-capturing move or a final capture still passes the turn ANDGAME-027`() {
+        val step = LobbyReducer.applyEvent(
+            listOf(active), jump(1, 1, "c3", "d4", null, creator), authoritative = server(opponent, null, 1),
+        ).single()
+        assertEquals(opponent, step.turn)
+
+        val capture = LobbyReducer.applyEvent(
+            listOf(active), jump(1, 1, "c3", "e5", "d4", creator), authoritative = server(opponent, null, 1),
+        ).single()
+        assertEquals(opponent, capture.turn)
+    }
+
+    @Test
+    fun `without an authoritative game the turn alternates and the stale checkers view is dropped ANDGAME-027`() {
+        val midChain = active.copy(view = CheckersContinuationTest.checkersView(4 to 4, creator))
+        val after = LobbyReducer.applyEvent(listOf(midChain), jump(2, 2, "e5", "g7", "f6", creator)).single()
+        assertEquals(opponent, after.turn)
+        assertNull(after.view)
+        assertNull(CheckersContinuation.square(after))
+    }
+
+    @Test
+    fun `a spectator following by events sees the same turn as the jumper ANDGAME-027`() {
+        // The jumper's board takes each move response; the spectator's board folds the long-poll
+        // batch with the game it re-fetches afterwards. Both must agree after every leg.
+        val leg1Server = server(creator, 4 to 4, 1)
+        val leg2Server = server(opponent, null, 2)
+
+        var spectator = active
+        assertTrue(LiveGameFold.refetchesAfterEvents(GameType.CHECKERS))
+        spectator = LiveGameFold.foldBatch(spectator, listOf(jump(1, 1, "c3", "e5", "d4", creator)), leg1Server)
+        assertEquals(leg1Server.turn, spectator.turn)
+        assertEquals("e5", CheckersContinuation.square(spectator))
+
+        spectator = LiveGameFold.foldBatch(spectator, listOf(jump(2, 2, "e5", "g7", "f6", creator)), leg2Server)
+        assertEquals(leg2Server.turn, spectator.turn)
+        assertNull(CheckersContinuation.square(spectator))
+
+        // Both legs arriving in one long-poll batch fold to the same final turn.
+        val batched = LiveGameFold.foldBatch(
+            active,
+            listOf(jump(1, 1, "c3", "e5", "d4", creator), jump(2, 2, "e5", "g7", "f6", creator)),
+            leg2Server,
+        )
+        assertEquals(opponent, batched.turn)
+        assertEquals(2, batched.moveCount)
+    }
+
+    @Test
+    fun `other game types fold events on arrival without a refetch ANDGAME-027`() {
+        assertFalse(LiveGameFold.refetchesAfterEvents(GameType.TICTACTOE))
+        assertFalse(LiveGameFold.refetchesAfterEvents(GameType.CHESS))
+        assertFalse(LiveGameFold.refetchesAfterEvents(GameType.ULTIMATE))
     }
 }

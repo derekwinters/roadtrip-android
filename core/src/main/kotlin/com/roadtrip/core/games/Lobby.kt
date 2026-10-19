@@ -40,8 +40,11 @@ object LobbyReducer {
         return LobbyState(openGames, myGames, incomingChallenges)
     }
 
-    /** Folds a `game.*` event from the feed into the games list without a full reload. */
-    fun applyEvent(games: List<Game>, event: EventDto): List<Game> {
+    /**
+     * Folds a `game.*` event from the feed into the games list without a full reload.
+     * [authoritative] is the game as the server returned it after this event (ANDGAME-027).
+     */
+    fun applyEvent(games: List<Game>, event: EventDto, authoritative: Game? = null): List<Game> {
         val payload = event.payload
         fun str(key: String): String? = payload[key]?.jsonPrimitive?.contentOrNull
         val gameId = str("game_id") ?: return games
@@ -76,17 +79,26 @@ object LobbyReducer {
                 )
             }
             "game.move" -> games.update(gameId) { game ->
-                game.copy(
-                    moveCount = payload["move_no"]?.jsonPrimitive?.intOrNull ?: (game.moveCount + 1),
+                val moveCount = payload["move_no"]?.jsonPrimitive?.intOrNull ?: (game.moveCount + 1)
+                val server = authoritative?.takeIf { it.id == gameId }
+                when {
                     // Hangman has a single guesser: the turn never leaves them (no
-                    // creator↔opponent alternation, ANDGAME-015). Other games alternate.
-                    turn = if (game.gameType == GameType.HANGMAN) {
-                        game.opponentId
-                    } else when (event.actorId) {
-                        game.createdBy -> game.opponentId
-                        else -> game.createdBy
-                    },
-                )
+                    // creator↔opponent alternation, ANDGAME-015).
+                    game.gameType == GameType.HANGMAN -> game.copy(moveCount = moveCount, turn = game.opponentId)
+                    // The server's game after this move decides the turn: a checkers capture
+                    // that must continue keeps it with the jumper (ANDGAME-027).
+                    server != null -> game.copy(moveCount = moveCount, turn = server.turn, view = server.view)
+                    else -> game.copy(
+                        moveCount = moveCount,
+                        // No authoritative game: provisional alternation. A checkers view from
+                        // before this move would carry a stale `must_continue_from`, so drop it.
+                        turn = when (event.actorId) {
+                            game.createdBy -> game.opponentId
+                            else -> game.createdBy
+                        },
+                        view = if (game.gameType == GameType.CHECKERS) null else game.view,
+                    )
+                }
             }
             "game.finished" -> games.update(gameId) {
                 it.copy(
