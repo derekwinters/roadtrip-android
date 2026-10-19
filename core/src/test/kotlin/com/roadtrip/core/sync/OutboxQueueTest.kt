@@ -64,4 +64,20 @@ class OutboxQueueTest {
         assertFailsWith<IllegalArgumentException> { queue.enqueueJournalPost("x".repeat(2001)) }
         assertTrue(queue.enqueueJournalPost("x".repeat(2000)).payload.containsKey("text"))
     }
+
+    @Test
+    fun `plate events accept Canadian province codes and still reject unknown codes ANDBNG-001`() {
+        listOf("AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT").forEach { code ->
+            val spotted = queue.enqueuePlateSpotted(code)
+            assertEquals(OutboxEntry.TYPE_PLATE_SPOTTED, spotted.type)
+            assertEquals(code, spotted.payload["state_code"]!!.jsonPrimitive.content)
+        }
+        assertEquals(OutboxEntry.TYPE_PLATE_UNSPOTTED, queue.enqueuePlateUnspotted("ON").type)
+        assertEquals(OutboxEntry.TYPE_PLATE_SPOTTED, queue.enqueuePlateSpotted("CO").type)
+
+        assertFailsWith<IllegalArgumentException> { queue.enqueuePlateSpotted("XX") }
+        assertFailsWith<IllegalArgumentException> { queue.enqueuePlateSpotted("PR") }
+        assertFailsWith<IllegalArgumentException> { queue.enqueuePlateUnspotted("ZZ") }
+        assertEquals(15, store.pending().size)
+    }
 }

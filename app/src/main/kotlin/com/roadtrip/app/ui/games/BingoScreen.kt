@@ -42,7 +42,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * License plate bingo (docs/spec/10-bingo.md): the 50-states + DC grid, tap-to-spot with
+ * License plate bingo (docs/spec/10-bingo.md): the 64-region grid in a United States
+ * section then a Canada section, tap-to-spot with
  * confirm (any profile, offline-queued with a pending marker, ANDBNG-001), a detail sheet
  * with the spotter-or-parent Remove action (ANDBNG-002), the chronological log
  * (ANDBNG-003), and the per-profile leaderboard (ANDBNG-004). With [historyTripId] set it
@@ -136,13 +137,21 @@ fun BingoScreen(
                 }
             }
 
-            items(state.cells, key = { it.stateCode }) { cell ->
-                BingoCellBox(
-                    cell = cell,
-                    onClick = {
-                        if (cell.spotted) detailCell = cell else if (cell.canSpot) confirmSpot = cell
-                    },
-                )
+            // One header + adaptive cell rows per section, in PlateRegions order (ANDBNG-001).
+            // GridCells.Adaptive sizes the column count to the window, so the 64 cells wrap
+            // on compact phones and spread out on expanded tablets alike.
+            state.sections.forEach { section ->
+                item(key = "section-${section.title}", span = { GridItemSpan(maxLineSpan) }) {
+                    SectionHeader(section.title)
+                }
+                items(section.cells, key = { it.stateCode }) { cell ->
+                    BingoCellBox(
+                        cell = cell,
+                        onClick = {
+                            if (cell.spotted) detailCell = cell else if (cell.canSpot) confirmSpot = cell
+                        },
+                    )
+                }
             }
 
             item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Log") }
@@ -167,7 +176,7 @@ fun BingoScreen(
                                 BingoLogAction.REMOVED -> " removed "
                             },
                         )
-                        append(row.stateName)
+                        append(row.regionName)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(vertical = 2.dp),
@@ -180,7 +189,7 @@ fun BingoScreen(
     confirmSpot?.let { cell ->
         AlertDialog(
             onDismissRequest = { confirmSpot = null },
-            title = { Text("Spotted a ${cell.stateName} plate?") },
+            title = { Text("Spotted a ${cell.regionName} plate?") },
             text = { Text("It counts for you, ${profile.name} — saved offline and synced later if needed.") },
             confirmButton = {
                 TextButton(onClick = {
@@ -200,7 +209,7 @@ fun BingoScreen(
     detailCell?.let { cell ->
         AlertDialog(
             onDismissRequest = { detailCell = null },
-            title = { Text(cell.stateName) },
+            title = { Text(cell.regionName) },
             text = {
                 Column {
                     Text("Spotted by ${cell.spottedByName ?: "someone"}")

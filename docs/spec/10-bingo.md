@@ -1,7 +1,8 @@
 # 10 — License Plate Bingo (ANDBNG)
 
-Family license-plate bingo card (backend contract, issue #58): one shared 50-states-plus-DC
-card per trip. Anyone who spots a plate taps its state; the family fills the card together.
+Family license-plate bingo card (backend contract, issue #58): one shared card per trip of
+64 plate regions — the 50 US states plus DC, then Canada's 10 provinces and 3 territories.
+Anyone who spots a plate taps its region; the family fills the card together.
 Spots are **client sync events** (`plate.spotted` / `plate.unspotted` with `{state_code}`),
 so — unlike server-arbitrated game moves — they **queue offline** exactly like journal posts
 (ANDSYNC-001) and reconcile on sync.
@@ -9,8 +10,13 @@ so — unlike server-arbitrated game moves — they **queue offline** exactly li
 ## Interface decisions
 
 - The bingo screen lives in the **Games** section (it is a family game, not a checklist):
-  a grid of the 50 states + DC from a static in-app list — cells light up as plates are
-  spotted, showing state, spotter, and time.
+  a grid of the 64 plate regions from a static in-app list, laid out as a **United States**
+  section (50 states + DC) followed by a **Canada** section (10 provinces + 3 territories),
+  each alphabetical by full name — cells light up as plates are spotted, showing region,
+  spotter, and time. The wire field stays `state_code` for every region.
+- **Invariant:** the section order and the code list live in one static list (`PlateRegions`);
+  no logic branches on country — sections are data on each region, and validation, reduction
+  and rendering treat every region the same.
 - **Any profile** (kid or parent) can spot a plate — spotting is never parent-gated, and
   spots are attributed to the signed-in profile through the normal sync path (no actor
   override).
@@ -31,7 +37,7 @@ so — unlike server-arbitrated game moves — they **queue offline** exactly li
 
 | ID | Requirement | Verify |
 |----|-------------|--------|
-| ANDBNG-001 | The bingo screen in the Games section shows the 50-state + DC grid from a static in-app state list; filled cells show state, spotter, and spot time; any profile can spot an empty cell via tap + confirm; spots queue offline as `plate.spotted` events with a pending marker and real tap timestamps. | auto |
+| ANDBNG-001 | The bingo screen in the Games section shows a 64-cell grid from a static in-app list of plate regions: a "United States" section (50 states + DC) then a "Canada" section (10 provinces + 3 territories: AB, BC, MB, NB, NL, NS, ON, PE, QC, SK, NT, NU, YT), each alphabetical by full name; filled cells show region, spotter, and spot time; any profile can spot an empty cell via tap + confirm; spots queue offline as `plate.spotted` events with a pending marker and real tap timestamps, and a code not in the list is never queued. | auto |
 | ANDBNG-002 | Tapping a filled cell opens a detail sheet; a "Remove" action is available only to the original spotter or a parent, queues `plate.unspotted` offline, and clears the cell with a pending marker; every other profile sees details only. | auto |
 | ANDBNG-003 | A log section renders the backend log as chronological history — spots and removals with resolved profile names and timestamps. | auto |
 | ANDBNG-004 | Live updates: `plate.*` events arriving on the event feed fill/clear cells (honoring the spotter-or-parent removal rule) without a reload; a leaderboard row shows standing counts per profile; the card is per-trip via the trip-scoped cache, and past trips' cards are read-only in the history browser. | auto |

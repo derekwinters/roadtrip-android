@@ -1,6 +1,6 @@
 package com.roadtrip.core.sync
 
-import com.roadtrip.core.bingo.UsStates
+import com.roadtrip.core.bingo.PlateRegions
 import com.roadtrip.core.common.Clock
 import com.roadtrip.core.common.IdGenerator
 import com.roadtrip.core.common.UuidIdGenerator
@@ -82,7 +82,7 @@ class OutboxQueue(
     fun enqueuePlateUnspotted(stateCode: String): OutboxEntry = enqueuePlate(OutboxEntry.TYPE_PLATE_UNSPOTTED, stateCode)
 
     private fun enqueuePlate(type: String, stateCode: String): OutboxEntry {
-        require(UsStates.byCode.containsKey(stateCode)) { "unknown state code: $stateCode" }
+        require(PlateRegions.byCode.containsKey(stateCode)) { "unknown plate region code: $stateCode" }
         return enqueue(
             type,
             clientTs = clock.now(),
