@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,12 +38,16 @@ import com.roadtrip.app.ui.theme.BoardColors
 import com.roadtrip.app.ui.theme.LocalBoardColors
 import com.roadtrip.core.games.BoardMetrics
 import com.roadtrip.core.games.BoardPieces
+import com.roadtrip.core.games.BoardSquareShade
 import com.roadtrip.core.games.BoardState
 import com.roadtrip.core.games.LastMoveHighlight
 import com.roadtrip.core.games.LastMoveShade
 import com.roadtrip.core.games.LegendEntry
 import com.roadtrip.core.games.PieceInk
 import com.roadtrip.core.games.PlayerLegend
+import com.roadtrip.core.games.StagedMove
+import com.roadtrip.core.games.StagedMoveHighlight
+import com.roadtrip.core.games.StagedMoveShade
 
 /**
  * Board renderers for the five games (ANDGAME-004), driven purely by core [BoardState]
@@ -67,21 +72,29 @@ private fun Modifier.activeSquareBorder(): Modifier =
     border(3.dp, MaterialTheme.colorScheme.primary)
 
 /**
- * FILL color for a last-move shade role (ANDGAME-024), or null for no shade. Deliberately a
- * background tint, never a border, so it reads distinctly from the ANDGAME-020 `3.dp`
- * `colorScheme.primary` selected/on-turn border and the ANDGAME-004 dictated-sub-board highlight.
- * MARK_FILL is a solid container swap for mark cells; the piece roles are translucent overlays
- * composited over the wood square so the glyph still reads (origin greyed dark, destination a dim
- * accent, capture a dim error tint).
+ * FILL color for a square shade role, or null for no shade: the ANDGAME-024 last-move roles and
+ * the ANDGAME-026 staged-move role. Deliberately a background tint, never a border, so it reads
+ * distinctly from the ANDGAME-020 `3.dp` `colorScheme.primary` selected/on-turn border and the
+ * ANDGAME-004 dictated-sub-board highlight. MARK_FILL is a solid container swap for mark cells; the
+ * piece roles are translucent overlays composited over the wood square so the glyph still reads
+ * (origin greyed dark, destination a dim accent, capture a dim error tint). The staged move uses
+ * the `tertiary` role, so it differs from every last-move shade and follows the effective theme.
+ * Takes the scheme and board palette explicitly so the mapping is testable off-device.
  */
+internal fun boardShadeColor(shade: BoardSquareShade?, scheme: ColorScheme, board: BoardColors): Color? =
+    when (shade) {
+        null -> null
+        LastMoveShade.MARK_FILL -> scheme.primaryContainer
+        LastMoveShade.PIECE_ORIGIN -> board.lastMoveOriginShade
+        LastMoveShade.PIECE_DESTINATION -> scheme.primary.copy(alpha = 0.30f)
+        LastMoveShade.PIECE_CAPTURE -> scheme.error.copy(alpha = 0.32f)
+        StagedMoveShade.STAGED_MOVE -> scheme.tertiary.copy(alpha = 0.45f)
+    }
+
+/** [boardShadeColor] for the current theme's colour scheme and board palette. */
 @Composable
-private fun lastMoveShadeColor(shade: LastMoveShade?): Color? = when (shade) {
-    null -> null
-    LastMoveShade.MARK_FILL -> MaterialTheme.colorScheme.primaryContainer
-    LastMoveShade.PIECE_ORIGIN -> LocalBoardColors.current.lastMoveOriginShade
-    LastMoveShade.PIECE_DESTINATION -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
-    LastMoveShade.PIECE_CAPTURE -> MaterialTheme.colorScheme.error.copy(alpha = 0.32f)
-}
+private fun boardShadeColor(shade: BoardSquareShade?): Color? =
+    boardShadeColor(shade, MaterialTheme.colorScheme, LocalBoardColors.current)
 
 @Composable
 fun ChessBoardView(
@@ -90,13 +103,15 @@ fun ChessBoardView(
     lastMove: LastMoveHighlight.PieceMove?,
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
+    staged: StagedMoveHighlight? = null,
 ) {
     EightByEight(
         piece = { square ->
             val glyph = BoardPieces.chessGlyph(board.squares[square])
             if (glyph != null) PieceGlyph(glyph, BoardPieces.chessInk(board.squares[square]))
         },
-        shadeAt = { square -> lastMove?.shadeFor(square) },
+        // ANDGAME-026: a staged move's squares take the staged shade; ANDGAME-024 elsewhere.
+        shadeAt = { square -> StagedMove.shadeAt(square, staged, lastMove) },
         selectedSquare = selectedSquare,
         enabled = enabled,
         onSquareTap = onSquareTap,
@@ -110,6 +125,7 @@ fun CheckersBoardView(
     lastMove: LastMoveHighlight.PieceMove?,
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
+    staged: StagedMoveHighlight? = null,
 ) {
     EightByEight(
         piece = { square ->
@@ -120,7 +136,8 @@ fun CheckersBoardView(
                 CheckersDisc(ink, crown)
             }
         },
-        shadeAt = { square -> lastMove?.shadeFor(square) },
+        // ANDGAME-026: a staged move's squares take the staged shade; ANDGAME-024 elsewhere.
+        shadeAt = { square -> StagedMove.shadeAt(square, staged, lastMove) },
         selectedSquare = selectedSquare,
         enabled = enabled,
         onSquareTap = onSquareTap,
@@ -214,7 +231,7 @@ private fun CheckersDisc(ink: PieceInk, crown: String?) {
 @Composable
 private fun EightByEight(
     piece: @Composable (String) -> Unit,
-    shadeAt: (String) -> LastMoveShade?,
+    shadeAt: (String) -> BoardSquareShade?,
     selectedSquare: String?,
     enabled: Boolean,
     onSquareTap: (String) -> Unit,
@@ -229,11 +246,10 @@ private fun EightByEight(
                         // a1 dark, h1 light — matches the core checkers piece layout.
                         val darkSquare = (fileIndex + rank) % 2 == 1
                         val background = if (darkSquare) boardColors.darkSquare else boardColors.lightSquare
-                        // Last-move shade (ANDGAME-024): a translucent overlay composited over the
-                        // wood square (origin greyed dark, destination dim accent, capture dim
-                        // error). It sits UNDER the piece glyph and is distinct from the selected-
-                        // square border above.
-                        val shadeColor = lastMoveShadeColor(shadeAt(square))
+                        // Last-move (ANDGAME-024) or staged-move (ANDGAME-026) shade: a translucent
+                        // overlay composited over the wood square. It sits UNDER the piece glyph
+                        // and is distinct from the selected-square border above.
+                        val shadeColor = boardShadeColor(shadeAt(square))
                         Box(
                             modifier = Modifier
                                 .weight(1f)

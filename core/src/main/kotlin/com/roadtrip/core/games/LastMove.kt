@@ -51,12 +51,19 @@ sealed class LastMoveHighlight {
 }
 
 /**
+ * A FILL role a chess/checkers square can carry (never a border). Two families share it so the
+ * 8x8 board resolves one shade per square: the ANDGAME-024 last-move roles ([LastMoveShade]) and
+ * the ANDGAME-026 staged-move role ([StagedMoveShade]). The Compose layer maps each to a colour.
+ */
+sealed interface BoardSquareShade
+
+/**
  * Presentation-layer shade roles for the last-move highlight (ANDGAME-024), mirroring the
  * [PieceInk] pattern: the thin Compose layer maps each role to a concrete FILL color. Every role
  * is a fill/shade, never a border, so it stays visually distinct from the ANDGAME-020/012 `3.dp`
  * `colorScheme.primary` selected/on-turn border and the ANDGAME-004 dictated-sub-board highlight.
  */
-enum class LastMoveShade {
+enum class LastMoveShade : BoardSquareShade {
     /** Mark games: the background fill of the last-placed cell. */
     MARK_FILL,
 

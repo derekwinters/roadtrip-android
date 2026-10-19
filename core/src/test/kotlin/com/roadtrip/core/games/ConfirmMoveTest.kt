@@ -5,13 +5,15 @@ import com.roadtrip.core.storage.InMemoryConfirmMoveStore
 import com.roadtrip.core.testing.TestData
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-// covers: ANDGAME-022
+// covers: ANDGAME-022, ANDGAME-026
 class ConfirmMoveTest {
 
     private val kid = TestData.kid.id
@@ -134,5 +136,135 @@ class ConfirmMoveTest {
 
         assertTrue(submitted.isEmpty())
         assertNull(gate.staged)
+    }
+
+    // ---- StagedMove (show the staged {from,to} move before confirming) -------------------
+    // covers: ANDGAME-026
+
+    private fun pieceMove(from: String, to: String): JsonElement = buildJsonObject {
+        put("from", from)
+        put("to", to)
+    }
+
+    @Test
+    fun `chess staged e2 to e4 shades both squares and names the move ANDGAME-026`() {
+        val staged = pieceMove("e2", "e4")
+
+        val highlight = assertNotNull(StagedMove.highlight(GameType.CHESS, staged))
+        assertEquals(StagedMoveHighlight(from = "e2", to = "e4"), highlight)
+        assertEquals(StagedMoveShade.STAGED_MOVE, highlight.shadeFor("e2"))
+        assertEquals(StagedMoveShade.STAGED_MOVE, highlight.shadeFor("e4"))
+        assertNull(highlight.shadeFor("e3"))
+        assertEquals("Confirm e2 → e4?", StagedMove.prompt(GameType.CHESS, staged))
+    }
+
+    @Test
+    fun `checkers staged move shades its algebraic squares and names the move ANDGAME-026`() {
+        val staged = pieceMove("c3", "d4")
+
+        val highlight = assertNotNull(StagedMove.highlight(GameType.CHECKERS, staged))
+        assertEquals(StagedMoveHighlight(from = "c3", to = "d4"), highlight)
+        assertEquals(StagedMoveShade.STAGED_MOVE, highlight.shadeFor("c3"))
+        assertEquals(StagedMoveShade.STAGED_MOVE, highlight.shadeFor("d4"))
+        assertEquals("Confirm c3 → d4?", StagedMove.prompt(GameType.CHECKERS, staged))
+    }
+
+    @Test
+    fun `staged shade is its own role distinct from every last-move shade ANDGAME-026`() {
+        val staged: BoardSquareShade = StagedMoveShade.STAGED_MOVE
+        LastMoveShade.entries.forEach { lastMoveShade ->
+            assertNotEquals<BoardSquareShade>(lastMoveShade, staged)
+        }
+    }
+
+    @Test
+    fun `staged shade wins its squares and the last move keeps its others ANDGAME-026`() {
+        val staged = StagedMoveHighlight(from = "e5", to = "d6")
+        val last = LastMoveHighlight.PieceMove(origin = "e7", destination = "e5")
+
+        assertEquals(StagedMoveShade.STAGED_MOVE, StagedMove.shadeAt("e5", staged, last))
+        assertEquals(StagedMoveShade.STAGED_MOVE, StagedMove.shadeAt("d6", staged, last))
+        assertEquals(LastMoveShade.PIECE_ORIGIN, StagedMove.shadeAt("e7", staged, last))
+        assertNull(StagedMove.shadeAt("a1", staged, last))
+        // Nothing staged -> exactly the ANDGAME-024 last-move shade.
+        assertEquals(LastMoveShade.PIECE_DESTINATION, StagedMove.shadeAt("e5", null, last))
+        assertNull(StagedMove.shadeAt("e5", null, null))
+    }
+
+    @Test
+    fun `mark games and hangman keep the generic prompt and get no staged highlight ANDGAME-026`() {
+        val ttt = buildJsonObject { put("cell", 4) }
+        val ultimate = buildJsonObject {
+            put("board", 2)
+            put("cell", 7)
+        }
+        val hangman = buildJsonObject { put("letter", "E") }
+
+        listOf(GameType.TICTACTOE to ttt, GameType.ULTIMATE to ultimate, GameType.HANGMAN to hangman)
+            .forEach { (type, staged) ->
+                assertNull(StagedMove.highlight(type, staged), "$type gets no staged highlight")
+                assertEquals(StagedMove.GENERIC_PROMPT, StagedMove.prompt(type, staged))
+            }
+        assertEquals("Confirm your move?", StagedMove.GENERIC_PROMPT)
+    }
+
+    @Test
+    fun `nothing staged gives no highlight ANDGAME-026`() {
+        assertNull(StagedMove.highlight(GameType.CHESS, null))
+        assertNull(StagedMove.highlight(GameType.CHECKERS, buildJsonObject { put("from", "c3") }))
+    }
+
+    @Test
+    fun `origin stays selected once staged and clears when submitted at once ANDGAME-026`() {
+        assertEquals("e2", StagedMove.selectionAfterRequest(from = "e2", confirmRequired = true))
+        assertNull(StagedMove.selectionAfterRequest(from = "e2", confirmRequired = false))
+    }
+
+    @Test
+    fun `cancel clears the highlight and leaves the pre-move board unchanged ANDGAME-026`() {
+        val session = ReplaySession(
+            engine = ReplayEngine(GameType.CHESS),
+            initialMoves = listOf(buildJsonObject {
+                put("from", "e7")
+                put("to", "e5")
+            }),
+            pinnedToLive = true,
+        )
+        val before = session.board()
+        var highlight: StagedMoveHighlight? = null
+        val submitted = mutableListOf<JsonElement>()
+        val gate = MoveConfirmGate(
+            confirmRequired = true,
+            onSubmit = { submitted += it },
+            onStageChanged = { highlight = StagedMove.highlight(GameType.CHESS, it) },
+        )
+
+        gate.request(pieceMove("e2", "e4"))
+        assertEquals(StagedMoveHighlight("e2", "e4"), highlight)
+        assertEquals(before, session.board()) // staged: no piece preview, position untouched
+
+        gate.cancel()
+        assertNull(highlight)
+        assertTrue(submitted.isEmpty())
+        assertEquals(before, session.board())
+    }
+
+    @Test
+    fun `confirm clears the highlight and submits the same move exactly once ANDGAME-026`() {
+        var highlight: StagedMoveHighlight? = null
+        val submitted = mutableListOf<JsonElement>()
+        val gate = MoveConfirmGate(
+            confirmRequired = true,
+            onSubmit = { submitted += it },
+            onStageChanged = { highlight = StagedMove.highlight(GameType.CHECKERS, it) },
+        )
+        val staged = pieceMove("c3", "d4")
+
+        gate.request(staged)
+        gate.confirm()
+        gate.confirm() // a second confirm is a no-op
+
+        assertNull(highlight)
+        assertEquals(listOf(staged), submitted)
     }
 }
