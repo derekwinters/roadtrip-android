@@ -41,6 +41,7 @@ import com.roadtrip.core.games.BoardState
 import com.roadtrip.core.games.CheckersContinuation
 import com.roadtrip.core.games.ConfirmMovePreference
 import com.roadtrip.core.games.EndControl
+import com.roadtrip.core.games.FourInARow
 import com.roadtrip.core.games.GameEndControls
 import com.roadtrip.core.games.GameOfflineGate
 import com.roadtrip.core.games.GameStreamFollower
@@ -368,9 +369,9 @@ fun BoardScreen(
 
                 // Board occupies the remaining height; grid boards bound to a square that
                 // fits, hangman (a tall non-grid layout) scrolls within its own slot. Tic-tac-toe,
-                // ultimate, chess and checkers carry a player-identity legend below (phone) /
-                // beside (tablet) the board (ANDGAME-020); hangman gets an empty legend and lays
-                // out unchanged.
+                // ultimate, chess, checkers and Four in a Row carry a player-identity legend below
+                // (phone) / beside (tablet) the board (ANDGAME-020); hangman gets an empty legend
+                // and lays out unchanged.
                 val legend = PlayerLegend.forGame(currentGame, profile.id, profileNames)
                 BoardWithLegend(
                     legend = legend,
@@ -411,6 +412,12 @@ fun BoardScreen(
                                     },
                                 )
                             },
+                        )
+                        is BoardState.FourInARowBoard -> FourInARowBoardView(
+                            board = board,
+                            lastMove = lastMove as? LastMoveHighlight.DiscCell,
+                            enabled = canInteract,
+                            onColumnTap = { column -> requestMove(FourInARow.move(column)) },
                         )
                         is BoardState.HangmanBoard -> Column(
                             modifier = Modifier

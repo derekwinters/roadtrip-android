@@ -78,6 +78,17 @@ class AppThemeTest {
         assertTrue(DarkBoardColors.pieceWhite.luminance() > DarkBoardColors.pieceBlack.luminance())
     }
 
+    /** covers: ANDGAME-028 — Four in a Row's yellow disc is a board-palette token in both themes. */
+    @Test
+    fun yellowDiscIsAPaletteTokenDistinctFromRedInBothThemes() {
+        for (colors in listOf(LightBoardColors, DarkBoardColors)) {
+            assertNotEquals(colors.pieceRed, colors.pieceYellow)
+            // Yellow reads lighter than red so the two sides stay distinct at a glance.
+            assertTrue(colors.pieceYellow.luminance() > colors.pieceRed.luminance())
+        }
+        assertNotEquals(LightBoardColors.pieceYellow, DarkBoardColors.pieceYellow)
+    }
+
     @Test
     fun rootPicksSchemeAndBoardPaletteFromEffectiveTheme() {
         assertSame(AppLightColorScheme, colorSchemeFor(EffectiveTheme.LIGHT))

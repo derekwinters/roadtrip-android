@@ -31,7 +31,7 @@ data class LegendEntry(
  * Pure mapping of a game's sides to player identities so the boards can show a persistent
  * "which side am I" legend with a turn highlight (ANDGAME-020). The creator always plays the
  * first-moving side: X (matching the move-index alternation in [ReplayEngine] `symbolFor`),
- * chess white, checkers red; the opponent plays O / black / black. Swatch inks come from the
+ * chess white, checkers red, Four in a Row red; the opponent plays O / black / black / yellow. Swatch inks come from the
  * same [BoardPieces] mapping that colours the pieces, so the legend cannot disagree with the
  * board. Resolution and fallback mirror [GameLobbyLabeler] so names read consistently with the
  * lobby. Hangman has no two-sided turn and gets no legend.
@@ -48,7 +48,7 @@ object PlayerLegend {
 
     /**
      * The legend for [game]: X/O rows for tic-tac-toe / ultimate, colour rows for chess /
-     * checkers, and an empty list for hangman. `names` is a `profileId -> display name` map read
+     * checkers / Four in a Row, and an empty list for hangman. `names` is a `profileId -> display name` map read
      * from the profiles cache; an uncached or absent player degrades to
      * [GameLobbyLabeler.UNKNOWN_PLAYER].
      */
@@ -66,6 +66,10 @@ object PlayerLegend {
                 entry(game.createdBy, myProfileId, names, game).copy(ink = BoardPieces.checkersInk(CHECKERS_RED)),
                 entry(game.opponentId, myProfileId, names, game).copy(ink = BoardPieces.checkersInk(CHECKERS_BLACK)),
             )
+            GameType.FOURINAROW -> listOf(
+                entry(game.createdBy, myProfileId, names, game).copy(ink = BoardPieces.fourInARowInk(FOUR_CREATOR)),
+                entry(game.opponentId, myProfileId, names, game).copy(ink = BoardPieces.fourInARowInk(FOUR_JOINER)),
+            )
             GameType.HANGMAN -> emptyList()
         }
 
@@ -74,6 +78,10 @@ object PlayerLegend {
     private const val CHESS_BLACK = "b"
     private const val CHECKERS_RED = "r"
     private const val CHECKERS_BLACK = "w"
+
+    // Four in a Row cell values (backend GAME-020): 0 = players[0] (creator), 1 = joiner.
+    private const val FOUR_CREATOR = 0
+    private const val FOUR_JOINER = 1
 
     private fun entry(
         playerId: String?,

@@ -386,6 +386,9 @@ enum class GameType {
     @SerialName("tictactoe") TICTACTOE,
     @SerialName("ultimate") ULTIMATE,
     @SerialName("hangman") HANGMAN,
+
+    /** Four in a Row (ANDGAME-028, backend GAME-020): 7×6 grid, `{column}` moves. */
+    @SerialName("fourinarow") FOURINAROW,
 }
 
 @Serializable

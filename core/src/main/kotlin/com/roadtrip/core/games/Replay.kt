@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *  - tictactoe:{cell}                          0..8, X = creator, alternating
  *  - ultimate: {board, cell}                   both 0..8
  *  - hangman:  {letter}                        guesser's letter; word from game options
+ *  - fourinarow:{column, row?}                 0..6; row is advisory and ignored (gravity)
  */
 sealed class BoardState {
     /** squares: "e4" -> piece code like "wP", "bK". */
@@ -60,6 +61,18 @@ sealed class BoardState {
         val wrongCount: Int,
         val maxWrong: Int = 6,
     ) : BoardState()
+
+    /**
+     * Four in a Row (ANDGAME-028): [cells] holds the 7×6 grid row-major from the BOTTOM row
+     * ([FourInARow.index]), each `0` (creator / red), `1` (joiner / yellow) or null. [winningLine]
+     * is the four cell indices of a completed line (null while undecided) so the view highlights
+     * exactly those discs; [winner] is that line's disc.
+     */
+    data class FourInARowBoard(
+        val cells: List<Int?>,
+        val winner: Int? = null,
+        val winningLine: List<Int>? = null,
+    ) : BoardState()
 }
 
 /** Pure fold of a move list into a board snapshot, per game type. */
@@ -76,6 +89,7 @@ class ReplayEngine(
             GameType.TICTACTOE -> foldTtt(slice)
             GameType.ULTIMATE -> foldUltimate(slice)
             GameType.HANGMAN -> foldHangman(slice)
+            GameType.FOURINAROW -> foldFourInARow(slice)
         }
     }
 
@@ -220,6 +234,26 @@ class ReplayEngine(
             }
         }.joinToString("")
         return BoardState.HangmanBoard(masked, guessed, wrong)
+    }
+
+    // ---- four in a row -------------------------------------------------------------------
+
+    /**
+     * Each disc falls to the lowest empty row of its column; discs alternate by move index
+     * (move 0 = creator = `0`). The move's advisory `row` is never read (ANDGAME-028).
+     */
+    private fun foldFourInARow(moves: List<JsonObject>): BoardState.FourInARowBoard {
+        val cells = arrayOfNulls<Int>(FourInARow.COLUMNS * FourInARow.ROWS)
+        moves.forEachIndexed { moveIndex, move ->
+            val column = move.int("column") ?: return@forEachIndexed
+            if (column !in 0 until FourInARow.COLUMNS) return@forEachIndexed
+            val row = (0 until FourInARow.ROWS).firstOrNull { cells[FourInARow.index(it, column)] == null }
+                ?: return@forEachIndexed
+            cells[FourInARow.index(row, column)] = moveIndex % 2
+        }
+        val list = cells.toList()
+        val line = fourInARowWinningLine(list)
+        return BoardState.FourInARowBoard(list, line?.let { list[it[0]] }, line)
     }
 
     // ---- shared ------------------------------------------------------------------------

@@ -10,6 +10,9 @@ enum class PieceInk {
     WHITE_OUTLINED,
     BLACK,
     RED,
+
+    /** Four in a Row's joiner disc (ANDGAME-028). */
+    YELLOW,
 }
 
 /**
@@ -53,6 +56,16 @@ object BoardPieces {
         "r", "R" -> PieceInk.RED
         else -> null
     }
+
+    /**
+     * Four in a Row disc ink (ANDGAME-028): cell `0` (the creator, `players[0]`, moves first) is
+     * [PieceInk.RED], cell `1` (the joiner) is [PieceInk.YELLOW]; null for an empty cell.
+     */
+    fun fourInARowInk(disc: Int?): PieceInk? = when (disc) {
+        0 -> PieceInk.RED
+        1 -> PieceInk.YELLOW
+        else -> null
+    }
 }
 
 /**
@@ -67,6 +80,22 @@ object BoardMetrics {
     /** The largest square that fits both available dimensions (never negative). */
     fun squareSide(availableWidth: Float, availableHeight: Float): Float =
         minOf(availableWidth, availableHeight).coerceAtLeast(0f)
+
+    /**
+     * Side of one square cell for a non-square [columns]×[rows] grid (ANDGAME-012/028): the
+     * largest cell for which the whole grid fits both available dimensions, so cells stay square
+     * instead of stretching. Never negative; a degenerate grid yields zero.
+     */
+    fun gridCellSide(availableWidth: Float, availableHeight: Float, columns: Int, rows: Int): Float {
+        if (columns <= 0 || rows <= 0) return 0f
+        return minOf(availableWidth / columns, availableHeight / rows).coerceAtLeast(0f)
+    }
+
+    /** Fraction of a Four in a Row cell's side its drawn disc's DIAMETER occupies (ANDGAME-028). */
+    const val FOUR_IN_A_ROW_DISC_FRACTION = 0.8f
+
+    /** Four in a Row disc diameter for a given cell side (ANDGAME-028). */
+    fun fourInARowDiscDiameter(cellSide: Float): Float = cellSide * FOUR_IN_A_ROW_DISC_FRACTION
 
     /** Piece glyph size for a given square side. */
     fun pieceGlyphSize(squareSide: Float): Float = squareSide * PIECE_GLYPH_FRACTION

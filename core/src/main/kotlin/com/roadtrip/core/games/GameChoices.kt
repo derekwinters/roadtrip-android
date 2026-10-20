@@ -20,6 +20,7 @@ object GameTypeChoices {
         GameTypeChoice(GameType.CHECKERS, "Checkers"),
         GameTypeChoice(GameType.TICTACTOE, "Tic-tac-toe"),
         GameTypeChoice(GameType.ULTIMATE, "Ultimate TTT"),
+        GameTypeChoice(GameType.FOURINAROW, "Four in a Row"),
         GameTypeChoice(GameType.HANGMAN, "Hangman"),
     )
 

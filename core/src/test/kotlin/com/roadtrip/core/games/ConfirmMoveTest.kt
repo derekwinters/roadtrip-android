@@ -42,6 +42,13 @@ class ConfirmMoveTest {
         assert(ConfirmMovePreference.key(kid, GameType.CHESS) != ConfirmMovePreference.key(parent, GameType.CHESS))
     }
 
+    @Test
+    fun `four in a row gets its own key and the ON default ANDGAME-022 ANDGAME-028`() {
+        assertEquals("confirm_move:$kid:fourinarow", ConfirmMovePreference.key(kid, GameType.FOURINAROW))
+        val store = InMemoryConfirmMoveStore()
+        assertEquals(true, ConfirmMovePreference.resolve(store.get(kid, GameType.FOURINAROW)))
+    }
+
     // ---- ConfirmMoveStore (round-trip + scoping + stickiness) --------------------------
 
     @Test

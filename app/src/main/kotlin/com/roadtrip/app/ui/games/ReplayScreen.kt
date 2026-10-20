@@ -220,6 +220,9 @@ private fun ReplayBoard(board: BoardState, lastMove: LastMoveHighlight?) {
         is BoardState.UltimateBoard -> UltimateBoardView(
             board, lastMove = lastMove as? LastMoveHighlight.UltimateCell, enabled = false,
         ) { _, _ -> }
+        is BoardState.FourInARowBoard -> FourInARowBoardView(
+            board, lastMove = lastMove as? LastMoveHighlight.DiscCell, enabled = false,
+        ) {}
         is BoardState.HangmanBoard -> Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         ) {
