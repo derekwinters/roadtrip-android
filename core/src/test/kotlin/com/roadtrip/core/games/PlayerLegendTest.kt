@@ -181,7 +181,7 @@ class PlayerLegendTest {
     }
 
     @Test
-    fun `four in a row maps red to the creator and yellow to the opponent ANDGAME-020 ANDGAME-028`() {
+    fun `four in a row maps R to the creator and Y to the opponent ANDGAME-020 ANDGAME-028`() {
         val game = TestData.game(
             type = GameType.FOURINAROW,
             createdBy = derek,
@@ -190,16 +190,14 @@ class PlayerLegendTest {
         )
         val legend = PlayerLegend.forGame(game, me, names)
         assertEquals(2, legend.size)
-        assertEquals(PieceInk.RED, legend[0].ink)
+        assertEquals('R', legend[0].mark)
         assertEquals(derek, legend[0].playerId)
         assertEquals("Dad", legend[0].name)
-        assertEquals(PieceInk.YELLOW, legend[1].ink)
+        assertEquals('Y', legend[1].mark)
         assertEquals(theo, legend[1].playerId)
         assertEquals("Kid", legend[1].name)
-        assertEquals(listOf<Char?>(null, null), legend.map { it.mark })
-        // Swatches come from the same mapping that colours the discs (cell 0 / cell 1).
-        assertEquals(BoardPieces.fourInARowInk(0), legend[0].ink)
-        assertEquals(BoardPieces.fourInARowInk(1), legend[1].ink)
+        // Mark rows carry no colour swatch.
+        assertEquals(listOf<PieceInk?>(null, null), legend.map { it.ink })
     }
 
     @Test

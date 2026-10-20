@@ -564,8 +564,8 @@ fun BoardWithLegend(
 }
 
 /**
- * Player-identity legend (ANDGAME-020): each row maps a mark (X/O) or, for chess / checkers /
- * Four in a Row, a
+ * Player-identity legend (ANDGAME-020): each row maps a mark (X/O, or R/Y for Four in a Row)
+ * or, for chess / checkers, a
  * colour swatch in that side's piece ink to a player name from the pure
  * [com.roadtrip.core.games.PlayerLegend] seam. The on-turn
  * player's row is boxed with the same [activeSquareBorder] the board draws for the active square;
