@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *  - piece games (chess / checkers): the one move's origin + destination ([PieceMove]); checkers
  *    also carries the captured/jumped squares.
  *  - hangman: the most recent guessed letter ([HangmanGuess]).
+ *  - four in a row: the landing cell of the last drop ([DiscCell]).
  */
 sealed class LastMoveHighlight {
     /** Tic-tac-toe: index 0..8 of the last-placed cell. */
@@ -48,6 +49,14 @@ sealed class LastMoveHighlight {
 
     /** Hangman: the most recent guessed letter (uppercased). */
     data class HangmanGuess(val letter: Char) : LastMoveHighlight()
+
+    /**
+     * Four in a Row: the landing cell of the last drop, [row] 0 = bottom (ANDGAME-028). Shaded as
+     * a mark-cell fill ([shade]), never a border.
+     */
+    data class DiscCell(val row: Int, val column: Int) : LastMoveHighlight() {
+        val shade: LastMoveShade get() = LastMoveShade.MARK_FILL
+    }
 }
 
 /**
@@ -101,6 +110,12 @@ object LastMove {
                 LastMoveHighlight.UltimateCell(board, cell)
             }
             GameType.HANGMAN -> move.letter()?.let { LastMoveHighlight.HangmanGuess(it) }
+            GameType.FOURINAROW -> {
+                val column = move.int("column") ?: return null
+                // Landing row by gravity: how many earlier drops went into the same column.
+                val row = moves.take(at).count { it.int("column") == column }
+                LastMoveHighlight.DiscCell(row, column)
+            }
         }
     }
 

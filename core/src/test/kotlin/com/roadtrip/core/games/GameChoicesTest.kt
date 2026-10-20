@@ -8,6 +8,7 @@ import kotlin.test.assertEquals
 class GameChoicesTest {
     // covers: AND-013
     // covers: ANDGAME-002
+    // covers: ANDGAME-028
     @Test
     fun `game type choices are ordered with stable labels AND-013`() {
         assertEquals(
@@ -16,6 +17,7 @@ class GameChoicesTest {
                 GameType.CHECKERS to "Checkers",
                 GameType.TICTACTOE to "Tic-tac-toe",
                 GameType.ULTIMATE to "Ultimate TTT",
+                GameType.FOURINAROW to "Four in a Row",
                 GameType.HANGMAN to "Hangman",
             ),
             GameTypeChoices.all.map { it.type to it.label },

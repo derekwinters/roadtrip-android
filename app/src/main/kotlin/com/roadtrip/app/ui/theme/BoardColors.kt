@@ -20,8 +20,10 @@ data class BoardColors(
     val pieceWhite: Color,
     /** Fill of black pieces (`PieceInk.BLACK`). */
     val pieceBlack: Color,
-    /** Fill of red checkers pieces (`PieceInk.RED`). */
+    /** Fill of red checkers pieces and Four in a Row creator discs (`PieceInk.RED`). */
     val pieceRed: Color,
+    /** Fill of Four in a Row joiner discs (`PieceInk.YELLOW`, ANDGAME-028). */
+    val pieceYellow: Color,
     /** Dark outline shadow that lets white pieces read on the light square (ANDGAME-013). */
     val pieceOutlineShadow: Color,
     /** Translucent overlay greying the last move's origin square (ANDGAME-024). */
@@ -35,6 +37,7 @@ val LightBoardColors = BoardColors(
     pieceWhite = PieceInkWhite,
     pieceBlack = PieceInkBlack,
     pieceRed = PieceInkRed,
+    pieceYellow = PieceInkYellow,
     pieceOutlineShadow = PieceOutlineShadow,
     lastMoveOriginShade = LastMoveOriginShade,
 )
@@ -46,6 +49,7 @@ val DarkBoardColors = BoardColors(
     pieceWhite = DarkPieceInkWhite,
     pieceBlack = DarkPieceInkBlack,
     pieceRed = DarkPieceInkRed,
+    pieceYellow = DarkPieceInkYellow,
     pieceOutlineShadow = DarkPieceOutlineShadow,
     lastMoveOriginShade = DarkLastMoveOriginShade,
 )

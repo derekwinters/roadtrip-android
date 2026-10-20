@@ -40,6 +40,7 @@ import com.roadtrip.core.games.BoardMetrics
 import com.roadtrip.core.games.BoardPieces
 import com.roadtrip.core.games.BoardSquareShade
 import com.roadtrip.core.games.BoardState
+import com.roadtrip.core.games.FourInARow
 import com.roadtrip.core.games.LastMoveHighlight
 import com.roadtrip.core.games.LastMoveShade
 import com.roadtrip.core.games.LegendEntry
@@ -50,7 +51,7 @@ import com.roadtrip.core.games.StagedMoveHighlight
 import com.roadtrip.core.games.StagedMoveShade
 
 /**
- * Board renderers for the five games (ANDGAME-004), driven purely by core [BoardState]
+ * Board renderers for the six games (ANDGAME-004), driven purely by core [BoardState]
  * snapshots. Input is reported as taps; all rule arbitration stays on the server.
  *
  * Grid boards bound themselves to the smaller of the available width/height so the whole
@@ -165,6 +166,7 @@ private fun PieceInk.toStyle(colors: BoardColors): PieceStyle = when (this) {
     PieceInk.WHITE_OUTLINED -> PieceStyle(colors.pieceWhite, outline = true)
     PieceInk.BLACK -> PieceStyle(colors.pieceBlack, outline = false)
     PieceInk.RED -> PieceStyle(colors.pieceRed, outline = false)
+    PieceInk.YELLOW -> PieceStyle(colors.pieceYellow, outline = false)
 }
 
 /** A piece glyph sized to ~70% of its square (ANDGAME-012), tinted/outlined by ink. */
@@ -434,8 +436,91 @@ private fun SubBoard(
 }
 
 /**
- * Places a grid board and, for tic-tac-toe / ultimate / chess / checkers, its player-identity
- * legend (ANDGAME-020):
+ * Four in a Row (ANDGAME-028): a 7×6 grid drawn with row 0 at the bottom. Cells stay square —
+ * sized by [BoardMetrics.gridCellSide] so the whole grid fits both dimensions (ANDGAME-012) — and
+ * each disc is a drawn circle inked from the board palette via [BoardPieces.fourInARowInk].
+ * Tapping anywhere in a column reports that column; a full column is not tappable. The winning
+ * four (ANDGAME-014 idiom) and the last drop's landing cell (ANDGAME-024 MARK_FILL) are fills.
+ */
+@Composable
+fun FourInARowBoardView(
+    board: BoardState.FourInARowBoard,
+    lastMove: LastMoveHighlight.DiscCell?,
+    enabled: Boolean,
+    onColumnTap: (Int) -> Unit,
+) {
+    // Finished when someone has won or every cell is filled (draw) — read as clearly over.
+    val finished = board.winningLine != null || board.cells.all { it != null }
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
+        // In a scroll (maxHeight = Infinity) the width alone limits the cell size.
+        val cellSide = BoardMetrics.gridCellSide(
+            availableWidth = maxWidth.value,
+            availableHeight = maxHeight.value,
+            columns = FourInARow.COLUMNS,
+            rows = FourInARow.ROWS,
+        )
+        val cell = cellSide.dp
+        Row(modifier = Modifier.size(width = cell * FourInARow.COLUMNS, height = cell * FourInARow.ROWS)) {
+            for (column in 0 until FourInARow.COLUMNS) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(enabled = enabled && FourInARow.isColumnPlayable(board, column)) {
+                            onColumnTap(column)
+                        },
+                ) {
+                    // Top row first so row 0 sits at the bottom of the grid.
+                    for (row in FourInARow.ROWS - 1 downTo 0) {
+                        val index = FourInARow.index(row, column)
+                        val winning = board.winningLine?.contains(index) == true
+                        val lastMoved = lastMove != null && lastMove.row == row && lastMove.column == column
+                        // Win line keeps priority so a finished game shows both highlights.
+                        val background = when {
+                            winning -> MaterialTheme.colorScheme.tertiaryContainer
+                            lastMoved -> currentBoardShadeColor(lastMove?.shade)
+                                ?: MaterialTheme.colorScheme.primaryContainer
+                            finished -> MaterialTheme.colorScheme.secondaryContainer
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(1.dp)
+                                .background(background),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            FourInARowDisc(board.cells[index], cellSide)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One Four in a Row slot: a drawn circle [BoardMetrics.fourInARowDiscDiameter] of the cell, filled
+ * with the disc's palette ink, or an empty hole in the surface colour.
+ */
+@Composable
+private fun FourInARowDisc(disc: Int?, cellSide: Float) {
+    val ink = BoardPieces.fourInARowInk(disc)
+    val fill = ink?.toStyle(LocalBoardColors.current)?.color ?: MaterialTheme.colorScheme.surface
+    Box(
+        modifier = Modifier
+            .size(BoardMetrics.fourInARowDiscDiameter(cellSide).dp)
+            .background(fill, CircleShape),
+    )
+}
+
+/**
+ * Places a grid board and, for tic-tac-toe / ultimate / chess / checkers / Four in a Row, its
+ * player-identity legend (ANDGAME-020):
  * the legend sits below the board on phone and beside it on tablet/wide, switched on the same
  * width threshold as the ANDGAME-012 board sizing (`PlayerLegend.placeBeside`). An empty legend
  * (hangman) just centres the board unchanged.
@@ -479,7 +564,8 @@ fun BoardWithLegend(
 }
 
 /**
- * Player-identity legend (ANDGAME-020): each row maps a mark (X/O) or, for chess / checkers, a
+ * Player-identity legend (ANDGAME-020): each row maps a mark (X/O, or R/Y for Four in a Row)
+ * or, for chess / checkers, a
  * colour swatch in that side's piece ink to a player name from the pure
  * [com.roadtrip.core.games.PlayerLegend] seam. The on-turn
  * player's row is boxed with the same [activeSquareBorder] the board draws for the active square;
