@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.4.0](https://github.com/derekwinters/roadtrip-android/compare/v1.3.0...v1.4.0) (2026-10-20)
+
+
+### Features
+
+* **bingo:** add Canadian provinces and territories to the card ([#226](https://github.com/derekwinters/roadtrip-android/issues/226)) ([7efd5d8](https://github.com/derekwinters/roadtrip-android/commit/7efd5d87fdefd59157103b283f0c310ac7ad5635)), closes [#149](https://github.com/derekwinters/roadtrip-android/issues/149)
+* **checklist:** let parents press-and-hold a stop to give it a custom name ([#228](https://github.com/derekwinters/roadtrip-android/issues/228)) ([0a54e70](https://github.com/derekwinters/roadtrip-android/commit/0a54e70fe7ef15d3ec2c3cda99b9df8bef4fe0ef)), closes [#160](https://github.com/derekwinters/roadtrip-android/issues/160)
+* **checklist:** nest cities under their state as collapsible groups ([#225](https://github.com/derekwinters/roadtrip-android/issues/225)) ([cf51857](https://github.com/derekwinters/roadtrip-android/commit/cf5185710d3a96f45d2b24d655e0f8d869459d70)), closes [#148](https://github.com/derekwinters/roadtrip-android/issues/148)
+* **games:** add Four in a Row to the game picker with a playable board ([#233](https://github.com/derekwinters/roadtrip-android/issues/233)) ([e769faa](https://github.com/derekwinters/roadtrip-android/commit/e769faaf190fdf5b1f8d35dfbafffa638d263616)), closes [#166](https://github.com/derekwinters/roadtrip-android/issues/166)
+* **games:** draw checkers pieces as discs at half the square ([#216](https://github.com/derekwinters/roadtrip-android/issues/216)) ([31e65c4](https://github.com/derekwinters/roadtrip-android/commit/31e65c4e974a03fc5cd6e772a47f5ead4153ac68)), closes [#164](https://github.com/derekwinters/roadtrip-android/issues/164)
+* **games:** guide checkers multi-jumps as one continued turn ([#219](https://github.com/derekwinters/roadtrip-android/issues/219)) ([3951c0c](https://github.com/derekwinters/roadtrip-android/commit/3951c0c783c495d282f63a48144c49135a410b44)), closes [#153](https://github.com/derekwinters/roadtrip-android/issues/153)
+* **games:** show player colors and whose turn it is on checkers and chess ([#217](https://github.com/derekwinters/roadtrip-android/issues/217)) ([42deba9](https://github.com/derekwinters/roadtrip-android/commit/42deba90999f01d98e7778b2312b0a29383a1515)), closes [#151](https://github.com/derekwinters/roadtrip-android/issues/151)
+* **games:** show the staged move on chess and checkers before confirming ([#218](https://github.com/derekwinters/roadtrip-android/issues/218)) ([3f56f33](https://github.com/derekwinters/roadtrip-android/commit/3f56f33f0a7a0bc6af157e24f9f071f815a779d1)), closes [#150](https://github.com/derekwinters/roadtrip-android/issues/150)
+* **journal:** copy a stop's coordinates on press-and-hold ([#214](https://github.com/derekwinters/roadtrip-android/issues/214)) ([816849e](https://github.com/derekwinters/roadtrip-android/commit/816849e87d4fb19bf8410bd8f484f8ca2809d7fd)), closes [#145](https://github.com/derekwinters/roadtrip-android/issues/145)
+* **settings:** add city tracking toggles and minimum population to tuning form ([#232](https://github.com/derekwinters/roadtrip-android/issues/232)) ([84d0efa](https://github.com/derekwinters/roadtrip-android/commit/84d0efa4021489e4e127004498f2ad7925d5ec2b)), closes [#146](https://github.com/derekwinters/roadtrip-android/issues/146)
+* **theme:** add dark theme with Light/Dark/System setting ([#215](https://github.com/derekwinters/roadtrip-android/issues/215)) ([d7957b1](https://github.com/derekwinters/roadtrip-android/commit/d7957b16ee327a95f847c679c781017df551a9b3)), closes [#159](https://github.com/derekwinters/roadtrip-android/issues/159)
+* **trip:** show trip durations as h:mm ([#210](https://github.com/derekwinters/roadtrip-android/issues/210)) ([05cfd47](https://github.com/derekwinters/roadtrip-android/commit/05cfd47f174db56e3b2403c0630b3076532d6628)), closes [#147](https://github.com/derekwinters/roadtrip-android/issues/147)
+
+
+### Bug Fixes
+
+* **map:** tapping a selected marker again deselects it ([#209](https://github.com/derekwinters/roadtrip-android/issues/209)) ([f2bdd17](https://github.com/derekwinters/roadtrip-android/commit/f2bdd1798b05a200314ec21ba43480b6bb1385fb)), closes [#163](https://github.com/derekwinters/roadtrip-android/issues/163)
+* **sync:** keep unsynced outbox events across Room schema changes ([#206](https://github.com/derekwinters/roadtrip-android/issues/206)) ([0abd524](https://github.com/derekwinters/roadtrip-android/commit/0abd52471f92e04febf292e5c0358b9b47c0b717)), closes [#144](https://github.com/derekwinters/roadtrip-android/issues/144)
+
 ## [1.3.0](https://github.com/derekwinters/roadtrip-android/compare/v1.2.0...v1.3.0) (2026-10-12)
 
 
