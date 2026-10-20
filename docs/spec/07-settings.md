@@ -4,7 +4,8 @@
 
 Parents get a settings screen with: detection tuning (the parent-configurable radii —
 `stop_radius_m`, `min_stop_duration_min`, `arrival_radius_m`, `ping_interval_s`,
-`city_radius_km`), the trip tracker toggle (ANDLOC — any device class), the road trip
+`city_radius_km` — plus the city-tracking switches `track_cities_stopped` /
+`track_cities_through` and the minimum city population `city_min_population`), the trip tracker toggle (ANDLOC — any device class), the road trip
 start/end actions (ANDTRIP), profile administration, server address, and the theme setting.
 Kids get only: server address display, app version, and the theme setting.
 
@@ -39,6 +40,31 @@ stop into `GET /api/checklist` (last-write-wins by `client_ts`).
   it trims and leaves the upper bound to the server, which rejects an over-long label
   (`label_too_long`) into the outbox quarantine (ANDSYNC-004).
 
+## City tracking
+
+The backend records visited cities two ways (backend CFG-009): cities the family **stops at**
+and cities it **travels through**, each switchable, filtered by a minimum population and the
+`city_radius_km` search radius. Parents control all four from the detection tuning form
+(issue #146, backend roadtrip-backend#100). Backend bounds and defaults:
+
+| Key | Type | Default | Bounds |
+|-----|------|---------|--------|
+| `track_cities_stopped` | boolean | `true` | — |
+| `track_cities_through` | boolean | `true` | — |
+| `city_min_population` | integer | `5000` | 0–10,000,000 |
+| `city_radius_km` | number | `15` | 1–50 |
+
+A change applies to pings from then on only; nothing already collected is backfilled or
+removed, so the checklist keeps listing every city it already has.
+
+- **Invariant:** a server that predates these keys still parses — a missing toggle reads as
+  `true` and a missing population as `5000` (the backend defaults), never an error.
+- **Invariant:** the checklist never hides or filters collected cities because a toggle is
+  off; it only adds a caption saying what is not being tracked.
+- **Invariant:** the caption is decided by one pure core function over the **cached** config
+  (`CityTrackingCaption.forConfig`), never by a live `GET /api/config` call, so it shows
+  offline exactly as online. No cached config yet means no caption.
+
 ## Requirements
 
 | ID | Requirement | Verify |
@@ -59,3 +85,6 @@ stop into `GET /api/checklist` (last-write-wins by `client_ts`).
 | ANDSET-014 | Long-pressing a checklist stop row as a **parent** opens a "Name this stop" dialog pre-filled with the row's current `label`, else its `place`, else empty; as a **kid** the long-press does nothing. The open/no-op decision and the pre-fill are the pure core `StopNaming.open(row, role)`. | auto |
 | ANDSET-015 | Saving the dialog trims the name; a name that is blank after trimming cannot be saved (the dialog's Save is disabled and `StopNaming.save` rejects it) and nothing is enqueued; otherwise exactly one `location.stop.labeled {stop_id, label}` event is enqueued through the outbox (ANDSYNC-001) with the trimmed label and the save time as `client_ts`, regardless of connectivity, followed by a post-write sync (ANDSYNC-007). | auto |
 | ANDSET-016 | A saved name shows in the row immediately, online or offline: the checklist reducer overlays pending `location.stop.labeled` outbox entries on the cached read model (latest `client_ts` per `stop_id` wins; entries for a `stop_id` not in the cache are ignored). After the event syncs, the name survives: `location.stop.labeled` events on the event feed update the cached stop's `label` (ANDSYNC-005 seq-guarded applier), and the next `GET /api/checklist` refresh carries it from the server. | auto |
+| ANDSET-017 | The detection tuning form has **Track cities we stop at** and **Track cities we travel through** switches bound to `track_cities_stopped` / `track_cities_through` (default `true` when the server omits them), loaded from `GET /api/config` and saved with the rest of the form via `PUT /api/config` through the core `ConfigForm`; a toggle edit puts only that key in the PUT body. A failed save restores both switches (with every other field) to the last known server values and shows the reason (ANDSET-002 semantics). Parent-only, like the rest of the tuning form (ANDSET-001, AND-003): kids neither see the switches nor can save them. | auto |
+| ANDSET-018 | The detection tuning form has a **Minimum city population** field bound to `city_min_population` (integer, default `5000` when the server omits it), validated client-side against the backend bounds 0–10,000,000 (`ConfigBounds.CITY_MIN_POPULATION`): an out-of-bounds value is rejected before any request, an in-bounds value is sent in the PUT body. The existing `city_radius_km` bounds stay 1–50. Parent-only (kids do not see it). | auto |
+| ANDSET-019 | The checklist's cities (nested in the **States** section, ANDSET-003/009) always stay listed whatever the toggles say. When a city-tracking toggle is off, a caption at the top of the States section names what is not being tracked: "Cities we stop at aren't being tracked" (`track_cities_stopped` off), "Cities we travel through aren't being tracked" (`track_cities_through` off), or "Cities we stop at and cities we travel through aren't being tracked" (both off); nothing when both are on or no config is cached. The text comes from the pure core `CityTrackingCaption.forConfig(config)` over the cached config (AND-005), so it shows offline. | auto |

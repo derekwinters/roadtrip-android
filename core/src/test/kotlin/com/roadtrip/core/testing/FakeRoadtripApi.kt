@@ -144,6 +144,9 @@ class FakeRoadtripApi : RoadtripApi {
             arrivalRadiusM = patch.arrivalRadiusM ?: config.arrivalRadiusM,
             cityRadiusKm = patch.cityRadiusKm ?: config.cityRadiusKm,
             openProfileCreation = patch.openProfileCreation ?: config.openProfileCreation,
+            trackCitiesStopped = patch.trackCitiesStopped ?: config.trackCitiesStopped,
+            trackCitiesThrough = patch.trackCitiesThrough ?: config.trackCitiesThrough,
+            cityMinPopulation = patch.cityMinPopulation ?: config.cityMinPopulation,
         )
         return config
     }

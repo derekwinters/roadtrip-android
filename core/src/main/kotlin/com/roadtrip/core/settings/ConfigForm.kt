@@ -17,6 +17,7 @@ object ConfigBounds {
     val MIN_STOP_DURATION_MIN = 1.0..240.0
     val ARRIVAL_RADIUS_M = 100.0..5000.0
     val CITY_RADIUS_KM = 1.0..50.0
+    val CITY_MIN_POPULATION = 0..10_000_000
 
     /** Returns "key out of bounds" style errors for every violated key. */
     fun validate(patch: ConfigPatch): List<String> = buildList {
@@ -39,6 +40,11 @@ object ConfigBounds {
         patch.cityRadiusKm?.let {
             if (it !in CITY_RADIUS_KM) add(outOfBounds("city_radius_km", CITY_RADIUS_KM.start, CITY_RADIUS_KM.endInclusive))
         }
+        patch.cityMinPopulation?.let {
+            if (it !in CITY_MIN_POPULATION) {
+                add(outOfBounds("city_min_population", CITY_MIN_POPULATION.first, CITY_MIN_POPULATION.last))
+            }
+        }
     }
 
     private fun outOfBounds(key: String, min: Number, max: Number): String =
@@ -56,7 +62,8 @@ sealed class SaveResult {
 
 /**
  * Detection-tuning form: loads GET /api/config, validates edits client-side against the
- * backend bounds, tracks dirtiness, saves parent-only via PUT /api/config (ANDSET-001).
+ * backend bounds, tracks dirtiness, saves parent-only via PUT /api/config (ANDSET-001),
+ * including the city-tracking switches and minimum population (ANDSET-017/018).
  * API save failures restore the last known server values and expose the reason (ANDSET-002).
  */
 class ConfigForm(
@@ -102,6 +109,9 @@ class ConfigForm(
             arrivalRadiusM = edited.arrivalRadiusM.takeIf { it != server.arrivalRadiusM },
             cityRadiusKm = edited.cityRadiusKm.takeIf { it != server.cityRadiusKm },
             openProfileCreation = edited.openProfileCreation.takeIf { it != server.openProfileCreation },
+            trackCitiesStopped = edited.trackCitiesStopped.takeIf { it != server.trackCitiesStopped },
+            trackCitiesThrough = edited.trackCitiesThrough.takeIf { it != server.trackCitiesThrough },
+            cityMinPopulation = edited.cityMinPopulation.takeIf { it != server.cityMinPopulation },
         )
     }
 
