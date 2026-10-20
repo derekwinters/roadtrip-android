@@ -47,6 +47,11 @@ data class Config(
     @SerialName("city_radius_km") val cityRadiusKm: Double,
     // Default matches CFG-006 so responses from servers predating the key still parse.
     @SerialName("open_profile_creation") val openProfileCreation: Boolean = true,
+    // City tracking (backend CFG-009, ANDSET-017/018); defaults are the backend defaults so
+    // responses from servers predating the keys still parse.
+    @SerialName("track_cities_stopped") val trackCitiesStopped: Boolean = true,
+    @SerialName("track_cities_through") val trackCitiesThrough: Boolean = true,
+    @SerialName("city_min_population") val cityMinPopulation: Int = 5000,
 )
 
 @Serializable
@@ -57,6 +62,9 @@ data class ConfigPatch(
     @SerialName("arrival_radius_m") val arrivalRadiusM: Double? = null,
     @SerialName("city_radius_km") val cityRadiusKm: Double? = null,
     @SerialName("open_profile_creation") val openProfileCreation: Boolean? = null,
+    @SerialName("track_cities_stopped") val trackCitiesStopped: Boolean? = null,
+    @SerialName("track_cities_through") val trackCitiesThrough: Boolean? = null,
+    @SerialName("city_min_population") val cityMinPopulation: Int? = null,
 )
 
 @Serializable

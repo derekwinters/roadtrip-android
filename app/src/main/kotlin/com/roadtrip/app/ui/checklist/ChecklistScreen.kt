@@ -40,6 +40,7 @@ import com.roadtrip.core.common.Role
 import com.roadtrip.core.settings.ChecklistExpansion
 import com.roadtrip.core.settings.ChecklistReducer
 import com.roadtrip.core.settings.ChecklistScreenState
+import com.roadtrip.core.settings.CityTrackingCaption
 import com.roadtrip.core.settings.StopNameDraft
 import com.roadtrip.core.settings.StopNameSave
 import com.roadtrip.core.settings.StopNaming
@@ -50,7 +51,9 @@ import com.roadtrip.core.settings.StopNaming
  * states light up as crossings arrive via the event feed (applied to the cache by the sync
  * pass). Deep links from state-crossing journal rows highlight and expand the crossed state
  * (ANDJRNL-004, ANDSET-011). A parent can press-and-hold a stop row to name it
- * (ANDSET-013–016). Grouping, expansion and naming rules live in core; this only renders.
+ * (ANDSET-013–016). When a city-tracking toggle is off, the States section carries a caption
+ * from the cached config (ANDSET-019). Grouping, expansion, naming and caption rules live in
+ * core; this only renders.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -67,6 +70,10 @@ fun ChecklistScreen(
         container.checklistCache.read()?.value?.let {
             ChecklistReducer.fromDto(it, container.outboxStore.pending())
         }
+    }
+    // From the cached config, never a live call, so it shows offline too (ANDSET-019).
+    val cityCaption: String? = remember(tick) {
+        CityTrackingCaption.forConfig(container.configCache.read()?.value)
     }
     var naming by remember { mutableStateOf<StopNameDraft?>(null) }
 
@@ -99,6 +106,16 @@ fun ChecklistScreen(
         LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             val groups = state.stateGroups
             item { SectionHeader("States (${groups.size})") }
+            cityCaption?.let { caption ->
+                item(key = "city-tracking-caption") {
+                    Text(
+                        caption,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+            }
             groups.forEach { group ->
                 val row = group.state
                 val entered = row.firstEnteredAt != null
